@@ -43,7 +43,7 @@ class Location(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     name: Mapped[str] = mapped_column(sa.String(100), unique=True, nullable=False)
     address: Mapped[Optional[str]] = mapped_column(sa.Text)
@@ -58,10 +58,10 @@ class Location(Base):
         sa.Boolean, server_default=sa.text("TRUE"),
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()"),
+        sa.DateTime(timezone=True), server_default=sa.func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()"),
+        sa.DateTime(timezone=True), server_default=sa.func.now(),
     )
 
     # ── Relationships ───────────────────────────────────────────────
@@ -92,7 +92,7 @@ class Department(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     keka_id: Mapped[Optional[str]] = mapped_column(sa.String(100), unique=True)
     name: Mapped[str] = mapped_column(sa.String(150), nullable=False)
@@ -112,10 +112,10 @@ class Department(Base):
         sa.Boolean, server_default=sa.text("TRUE"),
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()"),
+        sa.DateTime(timezone=True), server_default=sa.func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()"),
+        sa.DateTime(timezone=True), server_default=sa.func.now(),
     )
 
     # ── Relationships ───────────────────────────────────────────────
@@ -154,7 +154,7 @@ class Employee(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
 
     # ── Identifiers ─────────────────────────────────────────────────
@@ -244,10 +244,10 @@ class Employee(Base):
         sa.Boolean, server_default=sa.text("TRUE"),
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()"),
+        sa.DateTime(timezone=True), server_default=sa.func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()"),
+        sa.DateTime(timezone=True), server_default=sa.func.now(),
     )
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),

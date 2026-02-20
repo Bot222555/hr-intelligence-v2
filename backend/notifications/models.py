@@ -20,7 +20,7 @@ class Notification(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     recipient_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -41,7 +41,7 @@ class Notification(Base):
     )
     read_at: Mapped[Optional[datetime]] = mapped_column(sa.DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()"),
+        sa.DateTime(timezone=True), server_default=sa.func.now(),
     )
 
     # Relationships

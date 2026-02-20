@@ -20,7 +20,7 @@ class UserSession(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     employee_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -38,7 +38,7 @@ class UserSession(Base):
         sa.Boolean, server_default=sa.text("FALSE")
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
@@ -53,7 +53,7 @@ class RoleAssignment(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     employee_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -67,7 +67,7 @@ class RoleAssignment(Base):
         UUID(as_uuid=True), sa.ForeignKey("employees.id")
     )
     assigned_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
     revoked_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True)

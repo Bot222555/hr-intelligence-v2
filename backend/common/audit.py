@@ -6,6 +6,7 @@ import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 
+import sqlalchemy as sa
 from sqlalchemy import (
     Column,
     DateTime,
@@ -13,7 +14,6 @@ from sqlalchemy import (
     Index,
     String,
     Text,
-    text,
 )
 from sqlalchemy.dialects.postgresql import INET, JSONB, UUID
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,12 +36,12 @@ class AuditMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=text("NOW()"),
+        server_default=sa.func.now(),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=text("NOW()"),
+        server_default=sa.func.now(),
         onupdate=lambda: datetime.now(timezone.utc),
     )
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -66,7 +66,7 @@ class AuditTrail(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=text("gen_random_uuid()"),
+        default=uuid.uuid4,
     )
     actor_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),
@@ -85,7 +85,7 @@ class AuditTrail(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=text("NOW()"),
+        server_default=sa.func.now(),
     )
 
     __table_args__ = (

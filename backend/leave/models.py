@@ -21,7 +21,7 @@ class LeaveType(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     code: Mapped[str] = mapped_column(sa.String(10), unique=True, nullable=False)
     name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
@@ -45,10 +45,10 @@ class LeaveType(Base):
         sa.Enum(GenderType, name="gender_type", create_type=False)
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
@@ -67,7 +67,7 @@ class LeaveBalance(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     employee_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("employees.id"), nullable=False
@@ -97,7 +97,7 @@ class LeaveBalance(Base):
         sa.Computed("opening_balance + accrued + carry_forwarded + adjusted - used"),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
@@ -113,7 +113,7 @@ class LeaveRequest(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     employee_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("employees.id"), nullable=False
@@ -141,10 +141,10 @@ class LeaveRequest(Base):
         sa.DateTime(timezone=True)
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
@@ -169,7 +169,7 @@ class CompOffGrant(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     employee_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("employees.id"), nullable=False
@@ -185,7 +185,7 @@ class CompOffGrant(Base):
         UUID(as_uuid=True), sa.ForeignKey("leave_requests.id")
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships

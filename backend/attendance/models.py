@@ -25,7 +25,7 @@ class ShiftPolicy(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     name: Mapped[str] = mapped_column(sa.String(100), unique=True, nullable=False)
     start_time: Mapped[time] = mapped_column(sa.Time, nullable=False)
@@ -44,10 +44,10 @@ class ShiftPolicy(Base):
     )
     is_active: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("TRUE"))
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
@@ -65,13 +65,13 @@ class WeeklyOffPolicy(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     name: Mapped[str] = mapped_column(sa.String(100), unique=True, nullable=False)
     days: Mapped[dict] = mapped_column(JSONB, nullable=False)
     is_active: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("TRUE"))
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
@@ -86,7 +86,7 @@ class EmployeeShiftAssignment(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     employee_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -102,7 +102,7 @@ class EmployeeShiftAssignment(Base):
     effective_from: Mapped[date] = mapped_column(sa.Date, nullable=False)
     effective_to: Mapped[Optional[date]] = mapped_column(sa.Date)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
@@ -128,7 +128,7 @@ class HolidayCalendar(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
     year: Mapped[int] = mapped_column(sa.Integer, nullable=False)
@@ -137,7 +137,7 @@ class HolidayCalendar(Base):
     )
     is_active: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("TRUE"))
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
@@ -156,7 +156,7 @@ class Holiday(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     calendar_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -172,7 +172,7 @@ class Holiday(Base):
         sa.Boolean, server_default=sa.text("FALSE")
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
@@ -188,7 +188,7 @@ class AttendanceRecord(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     employee_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("employees.id"), nullable=False
@@ -222,10 +222,10 @@ class AttendanceRecord(Base):
     source: Mapped[str] = mapped_column(sa.String(50), server_default="system")
     remarks: Mapped[Optional[str]] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
@@ -247,7 +247,7 @@ class ClockEntry(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     employee_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("employees.id"), nullable=False
@@ -266,7 +266,7 @@ class ClockEntry(Base):
     source: Mapped[str] = mapped_column(sa.String(50), server_default="biometric")
     ip_address: Mapped[Optional[str]] = mapped_column(INET)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
@@ -282,7 +282,7 @@ class AttendanceRegularization(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
         primary_key=True,
-        server_default=sa.text("uuid_generate_v4()"),
+        default=uuid.uuid4,
     )
     attendance_record_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True),
@@ -311,10 +311,10 @@ class AttendanceRegularization(Base):
     )
     reviewer_remarks: Mapped[Optional[str]] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.func.now()
     )
 
     # Relationships
