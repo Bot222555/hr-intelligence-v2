@@ -12,9 +12,12 @@ const MONTH_SHORT = [
 
 /**
  * Format a date in Indian format: DD-MMM-YYYY (e.g. 20-Feb-2026)
+ * R2-27: Gracefully handles null, undefined, and invalid date strings.
  */
-export function formatDate(date: string | Date): string {
+export function formatDate(date: string | Date | null | undefined): string {
+  if (!date) return "—";
   const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "—";
   const day = String(d.getDate()).padStart(2, "0");
   const month = MONTH_SHORT[d.getMonth()];
   const year = d.getFullYear();

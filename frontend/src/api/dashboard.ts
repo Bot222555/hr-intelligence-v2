@@ -124,7 +124,14 @@ export interface NewJoinersResponse {
 /** GET /dashboard/summary */
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   const { data } = await apiClient.get("/dashboard/summary");
-  return data;
+  // R2-01: Map backend `pending_leave_requests` → frontend `pending_approvals`
+  // R2-09: Default new_joiners_this_month and attrition_this_month to 0
+  return {
+    ...data,
+    pending_approvals: data.pending_approvals ?? data.pending_leave_requests ?? 0,
+    new_joiners_this_month: data.new_joiners_this_month ?? 0,
+    attrition_this_month: data.attrition_this_month ?? 0,
+  };
 }
 
 /** GET /dashboard/attendance-trend */
@@ -166,7 +173,15 @@ export async function getRecentActivities(
 /** GET /dashboard/leave-summary */
 export async function getLeaveSummary(): Promise<LeaveSummaryResponse> {
   const { data } = await apiClient.get("/dashboard/leave-summary");
-  return data;
+  // R2-08: Normalize backend shape (by_type[]) → frontend shape (data[])
+  return {
+    data: (data.by_type ?? data.data ?? []).map((item: Record<string, unknown>) => ({
+      leave_type: (item.leave_type_name ?? item.leave_type ?? "") as string,
+      leave_type_code: (item.leave_type_code ?? "") as string,
+      total_used: (item.total_days ?? item.total_used ?? 0) as number,
+      total_pending: (item.total_pending ?? 0) as number,
+    })),
+  };
 }
 
 /** GET /dashboard/new-joiners */

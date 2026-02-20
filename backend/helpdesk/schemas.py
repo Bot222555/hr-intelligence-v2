@@ -68,6 +68,7 @@ class TicketOut(BaseModel):
 
 class TicketCreate(BaseModel):
     title: str = Field(..., min_length=1, max_length=500)
+    description: Optional[str] = Field(None, max_length=5000)  # R2-11: accept description
     category: Optional[str] = Field(None, max_length=200)
     priority: str = Field("medium", pattern="^(low|medium|high|critical|urgent)$")
 

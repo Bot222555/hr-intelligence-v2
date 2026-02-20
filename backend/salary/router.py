@@ -6,7 +6,7 @@ All endpoints require authentication.
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.dependencies import get_current_user, require_role
@@ -138,9 +138,10 @@ async def salary_summary(
     """Current month total earnings, deductions, and net pay for the user."""
     try:
         salary = await SalaryService.get_salary_by_employee(db, employee.id)
-        total_earnings = float(getattr(salary, "gross_earnings", 0) or getattr(salary, "basic_salary", 0) or 0)
-        total_deductions = float(getattr(salary, "total_deductions", 0) or 0)
-        net_pay = float(getattr(salary, "net_salary", 0) or 0)
+        # R2-02: Use actual ORM field names (gross_pay, net_pay — not gross_earnings / net_salary)
+        total_earnings = float(salary.gross_pay or 0)
+        net_pay = float(salary.net_pay or 0)
+        total_deductions = total_earnings - net_pay
     except Exception:
         total_earnings = 0
         total_deductions = 0
@@ -164,15 +165,14 @@ async def team_salary(
     db: AsyncSession = Depends(get_db),
 ):
     """List salary records for the manager's team (or all for HR/Admin)."""
+    # R2-16: Remove unsafe TypeError fallback that exposed ALL salary records.
     try:
         salaries, total = await SalaryService.get_salary_slips(
             db, manager_id=employee.id, page=page, page_size=page_size,
         )
     except TypeError:
-        # Service doesn't support manager_id — fall back to all slips
-        salaries, total = await SalaryService.get_salary_slips(
-            db, page=page, page_size=page_size,
-        )
+        # Service doesn't support manager_id — return empty, NOT all records
+        salaries, total = [], 0
     return SalaryListResponse(
         data=[SalaryOut.model_validate(s) for s in salaries],
         total=total,
@@ -186,11 +186,24 @@ async def team_salary(
 @router.get("/{employee_id}/ctc", response_model=CTCBreakdownOut)
 async def employee_ctc_breakdown(
     employee_id: uuid.UUID,
+    request: Request = None,
     employee: Employee = Depends(
         require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
     ),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get CTC breakdown for a specific employee (Manager/HR only)."""
+    """Get CTC breakdown for a specific employee (Manager/HR only).
+
+    R2-07: Managers can only view CTC for their direct reports.
+    HR and system admins can view any employee's CTC.
+    """
+    from fastapi import Request as _Req
+    from backend.common.exceptions import ForbiddenException
+
+    user_role: UserRole = request.state.user_role if request else UserRole.employee
+    if user_role == UserRole.manager:
+        target_emp = await db.get(Employee, employee_id)
+        if not target_emp or target_emp.reporting_manager_id != employee.id:
+            raise ForbiddenException("You can only view CTC for your direct reports.")
     breakdown = await SalaryService.get_ctc_breakdown(db, employee_id)
     return CTCBreakdownOut(**_enrich_ctc_breakdown(breakdown))

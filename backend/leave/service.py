@@ -785,19 +785,48 @@ class LeaveService:
         leave_req.updated_at = now
 
         # Restore balance if was approved
+        # R2-14: Handle cross-year leaves — restore balance for each year separately
         if was_approved:
-            year = leave_req.start_date.year
-            bal_result = await db.execute(
-                select(LeaveBalance).where(
-                    LeaveBalance.employee_id == employee_id,
-                    LeaveBalance.leave_type_id == leave_req.leave_type_id,
-                    LeaveBalance.year == year,
+            start_year = leave_req.start_date.year
+            end_year = leave_req.end_date.year
+            if start_year == end_year:
+                # Simple case: single year
+                bal_result = await db.execute(
+                    select(LeaveBalance).where(
+                        LeaveBalance.employee_id == employee_id,
+                        LeaveBalance.leave_type_id == leave_req.leave_type_id,
+                        LeaveBalance.year == start_year,
+                    )
                 )
-            )
-            balance = bal_result.scalars().first()
-            if balance:
-                balance.used = max(Decimal("0"), balance.used - leave_req.total_days)
-                balance.updated_at = now
+                balance = bal_result.scalars().first()
+                if balance:
+                    balance.used = max(Decimal("0"), balance.used - leave_req.total_days)
+                    balance.updated_at = now
+            else:
+                # Cross-year: split days by year based on computed_dates or date ranges
+                from datetime import date as _date, timedelta
+                for year in range(start_year, end_year + 1):
+                    year_start = max(leave_req.start_date, _date(year, 1, 1))
+                    year_end = min(leave_req.end_date, _date(year, 12, 31))
+                    # Count weekdays (rough estimate; matches balance deduction logic)
+                    days_in_year = Decimal("0")
+                    d = year_start
+                    while d <= year_end:
+                        if d.weekday() < 5:  # Mon–Fri
+                            days_in_year += Decimal("1")
+                        d += timedelta(days=1)
+                    if days_in_year > 0:
+                        bal_result = await db.execute(
+                            select(LeaveBalance).where(
+                                LeaveBalance.employee_id == employee_id,
+                                LeaveBalance.leave_type_id == leave_req.leave_type_id,
+                                LeaveBalance.year == year,
+                            )
+                        )
+                        balance = bal_result.scalars().first()
+                        if balance:
+                            balance.used = max(Decimal("0"), balance.used - days_in_year)
+                            balance.updated_at = now
 
         await db.flush()
 

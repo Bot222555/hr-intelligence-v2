@@ -8,10 +8,13 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Query, UploadFile
+from sqlalchemy import select as sa_select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.dependencies import get_current_user, require_role
+from backend.auth.models import RoleAssignment
 from backend.common.constants import UserRole
+from backend.common.exceptions import ForbiddenException
 from backend.core_hr.models import Employee
 from backend.database import get_db
 import math
@@ -77,9 +80,21 @@ async def list_expenses(
     db: AsyncSession = Depends(get_db),
 ):
     """List expense claims with optional filters."""
+    # R2-05: IDOR fix — non-managers can only view their own expenses
+    request_employee_id = employee_id
+    if employee_id and employee_id != employee.id:
+        role_check = await db.execute(
+            sa_select(RoleAssignment).where(
+                RoleAssignment.employee_id == employee.id,
+                RoleAssignment.role.in_([UserRole.manager, UserRole.hr_admin, UserRole.system_admin]),
+                RoleAssignment.is_active.is_(True),
+            )
+        )
+        if not role_check.scalars().first():
+            raise ForbiddenException("Cannot view another employee's expenses.")
     claims, total = await ExpenseService.list_claims(
         db,
-        employee_id=employee_id,
+        employee_id=request_employee_id,
         approval_status=approval_status,
         page=page,
         page_size=page_size,
@@ -167,8 +182,8 @@ async def team_claims(
     db: AsyncSession = Depends(get_db),
 ):
     """List expense claims from employees reporting to current user."""
-    # Reuse list_claims; managers see all via the general listing endpoint.
-    # Filter by reporting_to if the service supports it, else return all.
+    # R2-15: Remove unsafe TypeError fallback that exposed ALL claims.
+    # If service doesn't support manager_id, return only the manager's own claims.
     try:
         claims, total = await ExpenseService.list_claims(
             db,
@@ -178,9 +193,10 @@ async def team_claims(
             page_size=page_size,
         )
     except TypeError:
-        # Service doesn't support manager_id filter — fall back to all claims
+        # Service doesn't support manager_id — return own claims only, NOT all
         claims, total = await ExpenseService.list_claims(
             db,
+            employee_id=employee.id,
             approval_status=approval_status,
             page=page,
             page_size=page_size,
@@ -225,6 +241,18 @@ async def get_expense(
 ):
     """Get a specific expense claim."""
     claim = await ExpenseService.get_claim(db, claim_id)
+    # R2-05: Ownership check on individual claim
+    claim_owner = getattr(claim, "employee_id", None)
+    if claim_owner and claim_owner != employee.id:
+        role_check = await db.execute(
+            sa_select(RoleAssignment).where(
+                RoleAssignment.employee_id == employee.id,
+                RoleAssignment.role.in_([UserRole.manager, UserRole.hr_admin, UserRole.system_admin]),
+                RoleAssignment.is_active.is_(True),
+            )
+        )
+        if not role_check.scalars().first():
+            raise ForbiddenException("Cannot view another employee's expense claim.")
     return ExpenseOut.model_validate(claim)
 
 
