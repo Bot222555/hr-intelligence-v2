@@ -1,143 +1,143 @@
-# Code Review Report — HR Intelligence v2
+# REVIEW-QG1.md — Quality Gate 1: Full Backend Code Review
 
-**Reviewer:** Automated Code Review (QG1)  
-**Date:** 2026-02-20  
-**Scope:** Full backend review — auth, core_hr, attendance, leave, notifications, migration, common, config  
-**Commit:** main branch (HEAD)
+**Reviewer:** Vision 📊 (AI Code Reviewer)
+**Date:** 2026-02-20
+**Scope:** All 44 Python files in `backend/` + `migration/` scripts
+**Commit:** HEAD at time of review
 
 ---
 
 ## Executive Summary
 
-The HR Intelligence v2 backend is a well-structured FastAPI application with async SQLAlchemy, Google OAuth, JWT-based sessions, role-based access control (RBAC), and comprehensive modules for Core HR, Attendance, Leave, and Notifications. The codebase shows strong architectural fundamentals: proper separation of concerns (router → service → model), Pydantic v2 schema validation, RFC 7807 error responses, comprehensive audit trails, and a clean test setup.
+The HR Intelligence v2 backend is a well-structured FastAPI application with solid architectural foundations: async SQLAlchemy 2.0, Pydantic v2, proper RBAC with role hierarchy, RFC 7807 error responses, and comprehensive audit trailing. The codebase demonstrates strong engineering discipline in module organization and separation of concerns.
 
-**Overall quality: Good** — the codebase is significantly above average for its stage. However, there are several security issues, missing hardening measures, and code-quality improvements that should be addressed before production deployment.
-
-### Summary of Findings
-
-| Severity | Count | Key Areas |
-|----------|-------|-----------|
-| 🔴 Critical | 3 | JWT secret default, SQL injection in migration validation, missing rate limiting on auth |
-| 🟠 High | 7 | Refresh token not session-bound, CORS wildcard headers, no CSRF protection, missing attendance/leave routers, duplicate AuditTrail model, no password for DB default, token not invalidated on refresh |
-| 🟡 Medium | 10 | Missing security headers, no request size limits, pagination unbounded, employer status not enum-validated, missing DB indexes, no session cleanup, inconsistent error codes, SQL echo in dev |
-| 🔵 Low | 8 | Dead code, missing docstrings in some schemas, TODO items, test coverage gaps |
+However, this review uncovered **4 Critical**, **7 High**, **12 Medium**, and **10 Low** severity findings that must be addressed before production deployment.
 
 ---
 
-## 🔴 Critical Issues
+## Findings by Severity
 
-### CRIT-1: Hardcoded JWT Secret Default — Authentication Bypass Risk
+---
 
-**File:** `backend/config.py:23`  
-**Severity:** 🔴 Critical
+### 🔴 CRITICAL (Must Fix Before Deploy)
 
-The JWT secret has a hardcoded default value that will be used if the environment variable is not set:
+#### C-1: SQL Injection via `text()` in Sorting — ORDER BY Injection
+
+**Files:**
+- `backend/common/pagination.py:73-74`
+- `backend/common/filters.py:30-32`
+
+**Finding:** When a sort column name is not found as a model attribute, the code falls back to raw `text()` interpolation:
+
+```python
+# pagination.py:73-74
+direction = "DESC" if descending else "ASC"
+query = query.order_by(text(f"{col_name} {direction}"))
+```
+
+```python
+# filters.py:30-32
+direction = "DESC" if descending else "ASC"
+return query.order_by(text(f"{col_name} {direction}"))
+```
+
+`col_name` comes directly from the user-supplied `sort` query parameter (e.g., `?sort=-some_column`). An attacker can inject arbitrary SQL:
+
+```
+GET /api/v1/employees?sort=1;DROP TABLE employees--
+```
+
+**Impact:** Full SQL injection — arbitrary read/write/delete on the database.
+
+**Fix:** Remove the `text()` fallback entirely. If the column is not found on the model, raise a `ValidationException` or silently ignore the sort:
+
+```python
+if model is not None and hasattr(model, col_name):
+    col = getattr(model, col_name)
+    query = query.order_by(col.desc() if descending else col.asc())
+# else: silently ignore unknown sort column, or raise ValidationException
+```
+
+---
+
+#### C-2: Hardcoded JWT Secret with Weak Default
+
+**File:** `backend/config.py:24`
 
 ```python
 JWT_SECRET: str = "dev-secret-change-in-production"
 ```
 
-If this default leaks (it's in the repo) or is accidentally used in production, **any attacker can forge valid JWTs** for any user/role including `system_admin`.
+**Finding:** The JWT signing secret has a hardcoded default value. If the `.env` file is missing or `JWT_SECRET` is not set, the application will silently use this publicly-known secret. Any attacker can forge valid JWTs for any user and role (including `system_admin`).
 
-**Recommendation:**
+**Impact:** Complete authentication bypass — full system takeover.
+
+**Fix:** Remove the default value and make it a required field. Validate at startup:
+
 ```python
-JWT_SECRET: str = ""  # No default — must fail loudly if not configured
+JWT_SECRET: str  # No default — will fail to start if not set
 
-# Add a startup validation:
 @model_validator(mode="after")
-def _validate_secrets(self):
-    if self.ENVIRONMENT == "production" and self.JWT_SECRET in ("", "dev-secret-change-in-production"):
-        raise ValueError("JWT_SECRET must be set for production!")
+def validate_secrets(self):
+    if self.ENVIRONMENT == "production" and self.JWT_SECRET == "dev-secret-change-in-production":
+        raise ValueError("JWT_SECRET must be changed in production")
     return self
 ```
 
 ---
 
-### CRIT-2: SQL Injection in Migration Validation Script
+#### C-3: Duplicate `AuditTrail` Model — ORM Conflict / Table Mapping Ambiguity
 
-**File:** `migration/validate.py:13`  
-**Severity:** 🔴 Critical
+**Files:**
+- `backend/common/audit.py:51-100` — Defines `AuditTrail` model with `__tablename__ = "audit_trail"`
+- `backend/common/models.py:15-41` — Defines **another** `AuditTrail` model with `__tablename__ = "audit_trail"`
 
-```python
-def _count(cur, table: str) -> int:
-    cur.execute(f"SELECT COUNT(*) FROM {table}")  # noqa: S608
-    return cur.fetchone()[0]
-```
+**Finding:** Two separate ORM classes map to the same database table `audit_trail`. They have slightly different column definitions (e.g., `id` uses `gen_random_uuid()` in one and `uuid_generate_v4()` in the other; `action` is `String(50)` vs `String(100)`). Both are imported via `backend/common/__init__.py`, which imports from `audit.py`.
 
-The `table` parameter is interpolated directly into SQL via f-string. While currently only called with hardcoded table names from `count_checks`, the `noqa: S608` suppression shows awareness but the function is still a ticking time bomb — any future caller passing user input would create a SQL injection vector.
+SQLAlchemy will raise a runtime error or silently use one definition depending on import order, leading to:
+- Unpredictable ORM behavior
+- Schema drift between code and database
+- Potential data corruption if the wrong model is used
 
-**Recommendation:** Use identifier quoting:
-```python
-from psycopg2 import sql
+**Impact:** Application crash on startup, or silent data integrity issues.
 
-def _count(cur, table: str) -> int:
-    cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table)))
-    return cur.fetchone()[0]
-```
+**Fix:** Delete the duplicate in `common/models.py` and keep only the one in `common/audit.py` (which is the canonical version used by `create_audit_entry()`). Update any imports from `common/models.py` accordingly.
 
 ---
 
-### CRIT-3: No Rate Limiting on Authentication Endpoints
+#### C-4: Refresh Token Not Tied to Session — Token Replay / Session Bypass
 
-**File:** `backend/auth/router.py` (entire file), `backend/main.py`  
-**Severity:** 🔴 Critical
+**File:** `backend/auth/service.py:117-149`
 
-There is **zero rate limiting** on any endpoint, particularly:
-- `POST /api/v1/auth/google` — OAuth login
-- `POST /api/v1/auth/refresh` — Token refresh
-- `POST /api/v1/auth/logout` — Logout
+**Finding:** During `find_or_create_session()`, only the **access token hash** is stored in the `user_sessions` table. The **refresh token** is not tracked:
 
-An attacker could:
-1. Brute-force token refresh with stolen refresh tokens
-2. Flood the OAuth endpoint causing Google API rate limit exhaustion (DoS)
-3. Create unlimited sessions (no session cap per user)
-
-**Recommendation:** Add `slowapi` or a custom middleware:
 ```python
-from slowapi import Limiter
-from slowapi.util import get_remote_address
-
-limiter = Limiter(key_func=get_remote_address)
-
-@router.post("/google")
-@limiter.limit("10/minute")
-async def google_auth(request: Request, ...):
+session = UserSession(
+    employee_id=employee.id,
+    token_hash=_hash_token(access_token),  # Only access token tracked
     ...
+)
 ```
+
+During `refresh_access_token()` (line 138), the refresh token is validated purely by JWT signature — there is no server-side revocation check. Even after `logout` (which revokes the access token session), the refresh token remains valid for 7 days.
+
+**Attack scenario:**
+1. User logs in → gets access_token + refresh_token
+2. User logs out → access token session revoked
+3. Attacker uses the refresh_token → gets a new valid access_token
+4. Attacker has full access for 7 more days
+
+**Impact:** Logout does not actually revoke access. Stolen refresh tokens cannot be invalidated.
+
+**Fix:** Store the refresh token hash alongside (or instead of) the access token hash in `UserSession`. On refresh, verify the refresh token's session is not revoked. On logout, revoke both.
 
 ---
 
-## 🟠 High Severity Issues
+### 🟠 HIGH (Fix Before Production)
 
-### HIGH-1: Refresh Token Not Bound to Session — Token Reuse Attack
+#### H-1: CORS Wildcard Methods and Headers
 
-**File:** `backend/auth/service.py:107-130`  
-**Severity:** 🟠 High
-
-The refresh token is a standalone JWT with no server-side binding:
-
-```python
-def _create_refresh_token(employee_id: uuid.UUID) -> str:
-    payload = {
-        "sub": str(employee_id),
-        "type": "refresh",
-        "exp": datetime.now(timezone.utc) + timedelta(days=7),
-    }
-    return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
-```
-
-The `refresh_access_token` function (line 133) validates the JWT signature and expiry but does **not** check if the refresh token was revoked or already used. After logout (which only revokes the access token's session), the refresh token remains valid for 7 days.
-
-**Attack scenario:** Steal a refresh token → victim logs out → attacker uses refresh token to get new access token.
-
-**Recommendation:** Store a hash of the refresh token in `UserSession` and verify it during refresh. Revoke the refresh token on logout. Implement refresh token rotation (issue new refresh token on each refresh, invalidate the old one).
-
----
-
-### HIGH-2: CORS Allows All Methods and All Headers
-
-**File:** `backend/main.py:44-49`  
-**Severity:** 🟠 High
+**File:** `backend/main.py:43-49`
 
 ```python
 app.add_middleware(
@@ -149,412 +149,604 @@ app.add_middleware(
 )
 ```
 
-While `allow_origins` is configurable, `allow_methods=["*"]` and `allow_headers=["*"]` are overly permissive. Combined with `allow_credentials=True`, this weakens CORS protection. A misconfigured `CORS_ORIGINS` (e.g., `["*"]`) would completely disable CORS.
+**Finding:** `allow_credentials=True` combined with `allow_methods=["*"]` and `allow_headers=["*"]` is overly permissive. While `allow_origins` is configurable, the wildcard methods/headers expand the attack surface for CSRF-like attacks via preflight bypass.
 
-**Recommendation:**
+**Impact:** Potential cross-origin attack vector when combined with credentials.
+
+**Fix:** Restrict to the methods and headers actually used:
+
 ```python
 allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-allow_headers=["Authorization", "Content-Type", "Accept"],
+allow_headers=["Authorization", "Content-Type"],
 ```
 
 ---
 
-### HIGH-3: No CSRF Protection for Cookie-Based Flows
+#### H-2: IDOR in Employee Profile — Manager Access Check Fetches Data Before Authz
 
-**File:** `backend/auth/router.py`, `backend/main.py`  
-**Severity:** 🟠 High
-
-While the app uses Bearer tokens (not cookies) for auth, there's no CSRF protection middleware. If the frontend ever stores tokens in cookies (common for HTTP-only secure cookies), the app would be vulnerable to CSRF attacks.
-
-**Recommendation:** Add CSRF token middleware or explicitly document that tokens must never be stored in cookies without SameSite/CSRF protection.
-
----
-
-### HIGH-4: Attendance and Leave Routers Not Registered
-
-**File:** `backend/main.py:59-60`  
-**Severity:** 🟠 High
+**File:** `backend/core_hr/router.py:111-126`
 
 ```python
-# TODO: app.include_router(attendance_router, prefix="/api/v1/attendance", tags=["attendance"])
-# TODO: app.include_router(leave_router, prefix="/api/v1/leave", tags=["leave"])
+if is_manager:
+    # Managers can view their direct reports
+    detail = await EmployeeService.get_employee(db, employee_id)  # Fetches FIRST
+    if detail.reporting_manager and detail.reporting_manager.id == current_user.id:
+        return {...}  # Then checks
+    raise ForbiddenException(...)
 ```
 
-The attendance and leave modules have **complete service layers** with business logic, but the router files are **placeholders** (empty). This means:
-1. The attendance clock-in/out, regularization, today's view are all inaccessible via API
-2. The leave application, approval, balance, calendar endpoints don't exist
-3. All the comprehensive service code is dead code in production
+**Finding:** The full employee profile is loaded from the database **before** verifying the manager relationship. While the data isn't returned in the error case, it's still fetched and exists in memory. More critically, the authorization check uses `detail.reporting_manager.id` — but `reporting_manager` could be `None`, which would cause an `AttributeError` crash instead of a clean 403.
 
-**Recommendation:** Implement the routers or at minimum stub them out so the service layer is accessible.
+**Impact:** Unhandled exception on valid requests; information leakage via timing side-channel.
 
----
-
-### HIGH-5: Duplicate AuditTrail Model Definition
-
-**File:** `backend/common/audit.py:47-96` and `backend/common/models.py:12-38`  
-**Severity:** 🟠 High
-
-The `AuditTrail` model is defined **twice**:
-1. In `backend/common/audit.py` (line 47) — used by `create_audit_entry()`
-2. In `backend/common/models.py` (line 12) — with slightly different column definitions
-
-The `audit.py` version uses `gen_random_uuid()` as server default, `String(50)` for action/entity_type, and has proper indexes. The `models.py` version uses `uuid_generate_v4()`, `String(100)`, and has a relationship to Employee. SQLAlchemy will raise a `Table already defined` error or one will shadow the other depending on import order.
-
-**Recommendation:** Remove the `AuditTrail` from `backend/common/models.py` and keep only the canonical version in `audit.py`. If both are needed, consolidate them.
-
----
-
-### HIGH-6: Database Default Credentials in Code
-
-**File:** `backend/config.py:11-12`, `migration/config.py:34-37`  
-**Severity:** 🟠 High
+**Fix:** Check reporting relationship via a direct query first, or guard the None case:
 
 ```python
-# config.py
+if is_manager:
+    # Check relationship before fetching
+    report_check = await db.execute(
+        select(Employee.reporting_manager_id)
+        .where(Employee.id == employee_id)
+    )
+    mgr_id = report_check.scalar()
+    if mgr_id != current_user.id:
+        raise ForbiddenException(...)
+    detail = await EmployeeService.get_employee(db, employee_id)
+```
+
+---
+
+#### H-3: No Rate Limiting on Authentication Endpoints
+
+**Files:**
+- `backend/auth/router.py:41` — `/google` endpoint
+- `backend/auth/router.py:84` — `/refresh` endpoint
+
+**Finding:** No rate limiting on login (`POST /auth/google`) or token refresh (`POST /auth/refresh`). An attacker can brute-force or flood these endpoints without restriction.
+
+**Impact:** Credential stuffing, token brute-forcing, DoS on auth infrastructure and Google OAuth.
+
+**Fix:** Add `slowapi` or a custom rate limiter middleware. Recommended: 10 req/min per IP on `/auth/google`, 30 req/min on `/refresh`.
+
+---
+
+#### H-4: `get_db()` Auto-Commits on Success — Unintended Side Effects
+
+**File:** `backend/database.py:31-39`
+
+```python
+async def get_db() -> AsyncSession:
+    async with async_session_factory() as session:
+        try:
+            yield session
+            await session.commit()  # Auto-commits after every request
+        except Exception:
+            await session.rollback()
+            raise
+        finally:
+            await session.close()
+```
+
+**Finding:** The database dependency auto-commits after every request handler completes successfully. This means:
+1. Read-only endpoints (GET) trigger unnecessary commits
+2. If a handler calls `flush()` for intermediate checks but doesn't intend to persist, the data gets committed anyway
+3. Half-completed multi-step operations get committed if no exception is raised
+
+**Impact:** Data integrity risk in complex multi-step operations; unnecessary DB load on read endpoints.
+
+**Fix:** Require explicit commits in service layer, or use `session.begin()` context manager:
+
+```python
+async def get_db() -> AsyncSession:
+    async with async_session_factory() as session:
+        yield session
+        # No auto-commit — services must explicitly commit
+```
+
+---
+
+#### H-5: ILIKE Search Without Input Sanitization — Wildcard Injection
+
+**File:** `backend/common/filters.py:60-62`
+
+```python
+if key.endswith("__ilike"):
+    col = _get_column(model, key.removesuffix("__ilike"))
+    if col is not None:
+        conditions.append(col.ilike(f"%{value}%"))
+```
+
+**Finding:** User input is directly interpolated into a `LIKE` pattern without escaping `%` and `_` metacharacters. An attacker can craft patterns like `%_%_%_%` that force expensive sequential scans.
+
+**Impact:** Performance-based DoS via expensive LIKE queries; potential data enumeration.
+
+**Fix:** Escape `%` and `_` in the search value:
+
+```python
+escaped = value.replace("%", r"\%").replace("_", r"\_")
+conditions.append(col.ilike(f"%{escaped}%", escape="\\"))
+```
+
+---
+
+#### H-6: Leave Approval Auth Check Missing L2 Manager Consistency with Rejection
+
+**Files:**
+- `backend/leave/service.py:320-338` — `approve_leave()` allows L2 manager
+- `backend/leave/service.py:372-386` — `reject_leave()` does NOT allow L2 manager
+
+```python
+# approve_leave — allows L2
+is_l2 = employee.l2_manager_id == approver_id
+if not (is_manager or is_l2 or is_hr): raise
+
+# reject_leave — L2 NOT checked
+if not (is_manager or is_hr): raise
+```
+
+**Finding:** The L2 manager can approve leave but cannot reject it. This is an inconsistent authorization policy that could be a logic bug or an intentional design choice — but it's undocumented and likely unintended.
+
+**Impact:** L2 managers can approve but not reject, creating a broken workflow.
+
+**Fix:** Either add `is_l2` check to `reject_leave()` for consistency, or document the design decision explicitly.
+
+---
+
+#### H-7: Hardcoded Database Password in Default Config
+
+**File:** `backend/config.py:13-14`
+
+```python
 DATABASE_URL: str = "postgresql+asyncpg://hr_app:password@localhost:5432/hr_intelligence"
-
-# migration/config.py
-DATABASE_URL_SYNC = os.environ.get(
-    "DATABASE_URL_SYNC",
-    "postgresql://hr_app:password@localhost:5432/hr_intelligence",
-)
+DATABASE_URL_SYNC: str = "postgresql://hr_app:password@localhost:5432/hr_intelligence"
 ```
 
-Hardcoded database credentials (`hr_app:password`) as defaults. While intended for development, these could easily leak into production.
+**Finding:** Database credentials are hardcoded as default values. Combined with C-2, if the `.env` file is misconfigured, the application connects with known credentials.
 
-**Recommendation:** Use empty defaults and fail explicitly in production, similar to CRIT-1.
+**Impact:** Database access with known credentials if `.env` is missing.
 
----
-
-### HIGH-7: Access Token Not Invalidated on Refresh
-
-**File:** `backend/auth/service.py:133-155`  
-**Severity:** 🟠 High
-
-When `refresh_access_token` is called, a new access token and session are created, but the **old access token session is not revoked**. This means:
-- An attacker who steals an access token can use it even after the legitimate user refreshes
-- Sessions accumulate indefinitely in the `user_sessions` table
-
-**Recommendation:** Accept the old access token hash as a parameter and revoke the corresponding session when issuing a new one.
+**Fix:** Remove default values for production-sensitive config; validate at startup.
 
 ---
 
-## 🟡 Medium Severity Issues
+### 🟡 MEDIUM (Fix Before Beta / First Users)
 
-### MED-1: No Security Headers Middleware
+#### M-1: No Input Validation on JSONB Fields (Address, Emergency Contact)
 
-**File:** `backend/main.py`  
-**Severity:** 🟡 Medium
-
-Missing security headers that should be set on all responses:
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: DENY`
-- `Strict-Transport-Security` (for HTTPS)
-- `X-XSS-Protection: 0` (prefer CSP)
-- `Content-Security-Policy`
-
-**Recommendation:** Add a security headers middleware:
-```python
-@app.middleware("http")
-async def security_headers(request, call_next):
-    response = await call_next(request)
-    response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "DENY"
-    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
-    return response
-```
-
----
-
-### MED-2: Pagination page_size Potentially Unbounded
-
-**File:** `backend/common/pagination.py`  
-**Severity:** 🟡 Medium
-
-While `MAX_PAGE_SIZE = 100` is defined in constants, I need to verify it's enforced in PaginationParams. If the pagination class doesn't cap `page_size`, a client could request `page_size=999999` and dump entire tables.
-
-The `MAX_PAGE_SIZE` and `DEFAULT_PAGE_SIZE` constants exist in `backend/common/constants.py` but should be enforced via Pydantic validators in PaginationParams.
-
----
-
-### MED-3: Employee `employment_status` Not Enum-Validated in Schema
-
-**File:** `backend/core_hr/schemas.py:126, 168`  
-**Severity:** 🟡 Medium
+**File:** `backend/core_hr/schemas.py:138-140`
 
 ```python
-class EmployeeCreate(BaseModel):
-    ...
-    # employment_status is not in Create — good, it's set by the system
-
-class EmployeeUpdate(BaseModel):
-    employment_status: Optional[str] = None  # ← accepts any string!
+current_address: Optional[dict[str, Any]] = None
+permanent_address: Optional[dict[str, Any]] = None
+emergency_contact: Optional[dict[str, Any]] = None
 ```
 
-The `employment_status` field accepts any string, but the database expects specific enum values (`active`, `notice_period`, `relieved`, `absconding`). While the Employee model stores this as a plain string (not SQLAlchemy Enum), invalid values would corrupt data.
+**Finding:** Address and emergency contact fields accept `dict[str, Any]` — any arbitrary JSON structure is accepted and stored. An attacker could inject massive nested payloads (MB of JSON) or malicious content.
 
-**Recommendation:** Use the `EmploymentStatus` enum from constants:
-```python
-from backend.common.constants import EmploymentStatus
-employment_status: Optional[EmploymentStatus] = None
-```
+**Impact:** Storage abuse, potential XSS if rendered unescaped in frontend, data inconsistency.
 
----
-
-### MED-4: SQL Echo Enabled in Development Mode
-
-**File:** `backend/database.py:10`  
-**Severity:** 🟡 Medium
+**Fix:** Use the defined `AddressSchema` and `EmergencyContactSchema` (already defined at lines 17-33 of the same file but not used):
 
 ```python
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    echo=settings.ENVIRONMENT == "development",
-    ...
-)
-```
-
-SQL echo logs all queries including parameters. In development, this could leak sensitive data to logs (employee PII, tokens, etc.).
-
-**Recommendation:** Use `echo=False` or at minimum `echo="debug"` which requires explicit log level configuration.
-
----
-
-### MED-5: No Session Cleanup / Expiry Mechanism
-
-**File:** `backend/auth/models.py` (UserSession table)  
-**Severity:** 🟡 Medium
-
-Expired and revoked sessions are never cleaned up. The `user_sessions` table will grow indefinitely. With 24h token expiry and no cleanup:
-- 284 active employees × multiple sessions per day = thousands of orphaned rows per month
-
-**Recommendation:** Add a periodic cleanup task (e.g., cron or background task):
-```sql
-DELETE FROM user_sessions WHERE expires_at < NOW() - INTERVAL '7 days';
+current_address: Optional[AddressSchema] = None
+permanent_address: Optional[AddressSchema] = None
+emergency_contact: Optional[EmergencyContactSchema] = None
 ```
 
 ---
 
-### MED-6: `get_employee` Called Twice in `create_employee` Router
+#### M-2: No Session Cleanup / Expiry Garbage Collection
 
-**File:** `backend/core_hr/router.py:113-118`  
-**Severity:** 🟡 Medium
+**Files:**
+- `backend/auth/models.py` — `UserSession` has `expires_at` and `is_revoked`
+- `backend/main.py:22-27` — TODOs for startup/shutdown
+
+**Finding:** Expired and revoked sessions accumulate indefinitely in the `user_sessions` table. There is no background task, cron job, or lifecycle hook to clean them up. Also, on each refresh, a NEW session row is created (line 143 of `service.py`), so session rows grow linearly with every token refresh.
+
+**Impact:** Unbounded table growth; degraded auth performance over time.
+
+**Fix:** Add a periodic cleanup task (via FastAPI `lifespan`, a cron job, or a DB trigger) that deletes sessions where `expires_at < NOW()` or `is_revoked = TRUE`.
+
+---
+
+#### M-3: Attendance Summary Loads ALL Records in Range (N+1 Variant)
+
+**File:** `backend/attendance/service.py:295-302`
 
 ```python
-async def create_employee(...):
-    employee = await EmployeeService.create_employee(db, body, actor_id=current_user.id)
-    detail = await EmployeeService.get_employee(db, employee.id)  # ← redundant DB query
-    return {"data": detail.model_dump(mode="json"), ...}
-```
-
-After creating the employee, the code immediately does a full `get_employee` with eager loading. This is a redundant query — the just-created employee object could be enriched directly.
-
-**Recommendation:** Return the created employee directly or use the already-loaded data.
-
----
-
-### MED-7: Migration Scripts Use psycopg2 Directly Without Connection Pooling
-
-**File:** `migration/config.py:35-38`, all `migration/migrate_*.py`  
-**Severity:** 🟡 Medium
-
-Migration scripts create raw psycopg2 connections. While acceptable for one-time migrations, they lack:
-- Connection pooling
-- Retry logic
-- Timeout configuration
-- Transaction isolation level specification
-
-**Recommendation:** For production migrations, use a connection pool and add timeouts.
-
----
-
-### MED-8: `_count` in validate.py Uses f-string for Multiple Queries
-
-**File:** `migration/validate.py:73, 83, 88, 93, 122, 137`  
-**Severity:** 🟡 Medium
-
-Beyond the `_count` function, `validate.py` has raw SQL queries built with string interpolation in several places. While all current inputs are hardcoded, this pattern is fragile.
-
----
-
-### MED-9: Attendance Summary Loads All Records Twice
-
-**File:** `backend/attendance/service.py:273-289`  
-**Severity:** 🟡 Medium
-
-```python
-# Paginate
-result = await db.execute(query.offset(offset).limit(page_size))
-records = result.scalars().all()
-
 # For summary, load all records in range (not just current page)
 all_result = await db.execute(
-    select(AttendanceRecord).where(...)
+    select(AttendanceRecord).where(
+        AttendanceRecord.employee_id == employee_id,
+        ...
+    )
 )
 all_records = all_result.scalars().all()
 ```
 
-The summary recalculates by loading **all** records in the date range separately from the paginated query. For large date ranges with many employees, this is inefficient.
+**Finding:** To compute the summary, the service loads ALL attendance records for the date range into Python memory (up to 90 days × N employees for team view). This is done **in addition** to the paginated query, effectively doubling the DB load.
 
-**Recommendation:** Compute summary statistics using aggregate SQL queries (COUNT, AVG, SUM with CASE) instead of loading all records into Python.
+Same pattern in `get_team_attendance()` at line 380.
 
----
+**Impact:** Memory and DB performance degradation; potential OOM with large teams.
 
-### MED-10: Leave Approval Authority Check Queries DB Every Time
-
-**File:** `backend/leave/service.py:278-290`  
-**Severity:** 🟡 Medium
+**Fix:** Compute summary via aggregate SQL queries instead of loading all rows:
 
 ```python
-# Check if approver is HR admin (via role assignments)
-from backend.auth.models import RoleAssignment
-from backend.common.constants import UserRole
-
-hr_check = await db.execute(
-    select(RoleAssignment).where(
-        RoleAssignment.employee_id == approver_id,
-        RoleAssignment.role == UserRole.hr_admin,
-        RoleAssignment.is_active.is_(True),
-    )
+summary = await db.execute(
+    select(
+        func.count().filter(AttendanceRecord.status == AttendanceStatus.present).label("present"),
+        func.count().filter(AttendanceRecord.status == AttendanceStatus.absent).label("absent"),
+        ...
+    ).where(...)
 )
 ```
 
-This DB query for HR role check happens on every approval/rejection call. The role is already available in the JWT token payload and `request.state.user_role` (set by `get_current_user`). However, since the leave service doesn't have access to the request context, it re-queries. This is a design coupling issue — the router should pass the role down.
-
 ---
 
-## 🔵 Low Severity Issues
+#### M-4: `_get_column()` Returns Any Attribute, Not Just Columns
 
-### LOW-1: Placeholder Module Files
-
-**Files:** `backend/dashboard/*.py`, `backend/attendance/router.py`, `backend/leave/router.py`  
-**Severity:** 🔵 Low
-
-Multiple files contain only placeholder docstrings. The dashboard module is entirely empty. While understandable for phased development, these should either be implemented or clearly marked as future work.
-
----
-
-### LOW-2: Missing `__init__.py` Exports
-
-**Files:** Various `__init__.py` files  
-**Severity:** 🔵 Low
-
-Most `__init__.py` files are empty. While Python 3 handles this fine with relative imports, explicit `__all__` exports would improve IDE support and documentation.
-
----
-
-### LOW-3: Inconsistent `display_name` Computation
-
-**Files:** `backend/core_hr/models.py`, `backend/core_hr/schemas.py` (multiple schemas)  
-**Severity:** 🔵 Low
-
-`display_name` is computed in multiple places:
-1. `Employee.ensure_display_name()` method on the model
-2. `@model_validator(mode="before")` in `EmployeeSummary`, `EmployeeListItem`, `EmployeeDetail`
-3. `EmployeeCreate._auto_display_name()` validator
-
-This scattered logic creates maintenance burden. Any change to the display name format needs updates in 4+ places.
-
-**Recommendation:** Centralize display_name computation into a single utility function.
-
----
-
-### LOW-4: Tests Only Cover Auth Module
-
-**Files:** `tests/test_auth.py`, `tests/test_health.py`  
-**Severity:** 🔵 Low
-
-Only 16 tests exist (15 auth + 1 health check). No tests for:
-- Core HR CRUD operations
-- Attendance clock-in/out logic
-- Leave application/approval workflow
-- Notification CRUD
-- Pagination/filtering
-- RBAC edge cases
-
-**Recommendation:** Add test suites for each module, particularly the business-critical leave balance and attendance calculation logic.
-
----
-
-### LOW-5: `alembic/env.py` Missing from Review Scope
-
-**Severity:** 🔵 Low  
-
-The Alembic env.py should be reviewed for proper async configuration and migration strategy.
-
----
-
-### LOW-6: `CompOffGrant` Approval Has No Status Field
-
-**File:** `backend/leave/models.py:121-147`  
-**Severity:** 🔵 Low
-
-The `CompOffGrant` model uses `granted_by IS NOT NULL` as the approval indicator (checked in `leave/service.py:588`). This is fragile — a proper status enum (pending/approved/rejected) would be cleaner and support rejection workflows.
-
----
-
-### LOW-7: Import Inside Function Bodies
-
-**File:** `backend/leave/service.py:278-279, 336-337`  
-**Severity:** 🔵 Low
+**File:** `backend/common/filters.py:112-114`
 
 ```python
-# Inside approve_leave:
-from backend.auth.models import RoleAssignment
-from backend.common.constants import UserRole
+def _get_column(model: Any, name: str) -> Optional[InstrumentedAttribute]:
+    return getattr(model, name, None)
 ```
 
-These imports are inside function bodies to avoid circular imports. While functional, this is a code smell indicating tight coupling between modules.
+**Finding:** This returns ANY attribute of the model class, including methods, relationships, and internal attributes — not just mapped columns. If a user passes `sort=sessions` or `filter=direct_reports`, it could cause unexpected behavior or SQLAlchemy errors.
 
-**Recommendation:** Restructure to pass role information from the router layer rather than querying it in the service layer.
+**Impact:** Unexpected query errors or information leakage.
 
----
+**Fix:** Validate that the attribute is actually a mapped column:
 
-### LOW-8: Docker Compose Exposes Postgres Port
+```python
+from sqlalchemy import inspect as sa_inspect
 
-**File:** `docker-compose.prod.yml` (if ports are mapped)  
-**Severity:** 🔵 Low
-
-Ensure the production Docker Compose does not expose PostgreSQL port 5432 to the host network.
-
----
-
-## Positive Observations ✅
-
-1. **Excellent schema validation** — Pydantic v2 with proper Field constraints (min_length, max_length, ge, le)
-2. **Comprehensive audit trail** — Every mutation is logged with before/after values
-3. **RFC 7807 error responses** — Consistent, standard error format
-4. **Proper async SQLAlchemy** — No blocking DB calls, proper session management with rollback
-5. **Well-designed RBAC** — Role hierarchy, permission-based checks, properly separated
-6. **Clean migration scripts** — Two-pass employee migration handles circular manager references
-7. **Good test infrastructure** — SQLite test fixtures with PG type compilation, proper factory pattern
-8. **Thorough leave system** — Sandwich rule, half-day support, weekend/holiday exclusion, balance computation
-9. **Session-based JWT** — Token hashes stored server-side, enabling revocation
-10. **Proper eager loading** — `selectinload` used consistently to avoid N+1 queries
+def _get_column(model, name):
+    mapper = sa_inspect(model, raiseerr=False)
+    if mapper and name in mapper.columns:
+        return getattr(model, name, None)
+    return None
+```
 
 ---
 
-## Recommended Priority Actions
+#### M-5: Attendance Router is a Placeholder — Service Has No API Exposure
 
-### Immediate (Pre-Production)
-1. **Fix JWT secret default** (CRIT-1) — Require environment variable
-2. **Add rate limiting** (CRIT-3) — At minimum on auth endpoints
-3. **Bind refresh tokens to sessions** (HIGH-1) — Prevent token reuse after logout
-4. **Fix CORS configuration** (HIGH-2) — Restrict methods and headers
-5. **Add security headers** (MED-1) — Basic HTTP hardening
+**Files:**
+- `backend/attendance/router.py` — Contains only: `"""attendance — router.py placeholder."""`
+- `backend/attendance/service.py` — 600+ lines of fully implemented business logic
+- `backend/main.py:63` — Route registration is commented out
 
-### Short-Term (Sprint)
-6. **Implement attendance and leave routers** (HIGH-4) — Currently dead code
-7. **Remove duplicate AuditTrail** (HIGH-5) — Will cause runtime errors
-8. **Add session cleanup** (MED-5) — Prevent table bloat
-9. **Validate employment_status** (MED-3) — Use enum in schema
+**Finding:** The entire attendance module (clock in/out, regularization, admin views) is fully implemented in the service layer but has NO API endpoints. The router is a placeholder and the registration in `main.py` is commented out.
 
-### Medium-Term (Backlog)
-10. **Expand test coverage** (LOW-4) — Particularly leave balance and attendance calculations
-11. **Optimize attendance summary** (MED-9) — Use aggregate queries
-12. **Centralize display_name** (LOW-3) — Single source of truth
-13. **Fix SQL injection pattern** (CRIT-2) — Use parameterized identifiers in migration
+Same issue with:
+- `backend/leave/router.py` — placeholder
+- `backend/dashboard/router.py` — placeholder
+
+**Impact:** 60%+ of the backend functionality is unreachable. This is not a bug per se, but a significant completeness gap.
+
+**Fix:** Implement the routers for attendance and leave modules, then uncomment the registrations in `main.py`.
 
 ---
 
-*Report generated by automated code review. All file:line references are approximate and should be verified against the current HEAD.*
+#### M-6: SQL Echo Enabled in Development — Log Injection Risk
+
+**File:** `backend/database.py:11`
+
+```python
+echo=settings.ENVIRONMENT == "development",
+```
+
+**Finding:** SQL echo logs every query to stdout, including parameter values. This can leak sensitive data (emails, personal info, tokens) into log files.
+
+**Impact:** Sensitive data leakage via application logs.
+
+**Fix:** Use `echo="debug"` (which only logs when the debug logger is enabled) or disable entirely. Never log query parameters.
+
+---
+
+#### M-7: `WeeklyOffPolicy.days` Accepts Arbitrary JSON
+
+**File:** `backend/attendance/models.py:57`
+
+```python
+days: Mapped[dict] = mapped_column(JSONB, nullable=False)
+```
+
+**Finding:** The `days` column accepts any JSON value. The service layer (`leave/service.py:83-97`) tries to handle both `list` and `dict` formats, but there's no schema validation at the model or API level.
+
+**Impact:** Invalid data in `days` column causes runtime errors in leave calculation.
+
+**Fix:** Add Pydantic validation when creating/updating weekly off policies.
+
+---
+
+#### M-8: No Timezone Normalization — `datetime.now(timezone.utc)` vs Server Time
+
+**Files:**
+- `backend/attendance/service.py:227` — `now = datetime.now(timezone.utc)`
+- `backend/common/constants.py:108` — `TIMEZONE = "Asia/Kolkata"`
+
+**Finding:** The attendance service uses UTC for all timestamps (`datetime.now(timezone.utc)`), but attendance is inherently local (shift times, clock-in/out). The shift policy stores times without timezone info (`sa.Time`). When comparing `clock_in_time` (UTC) against `shift.start_time` (local), the arrival status calculation at line 206 will be wrong by +5:30 hours.
+
+**Impact:** Incorrect late/on-time status for all employees. Every employee will appear 5.5 hours early or late depending on direction.
+
+**Fix:** Convert to IST (`Asia/Kolkata`) before comparing against shift times, or store all shift times in UTC.
+
+---
+
+#### M-9: `CompOffCreate.work_date_not_future` Uses `date.today()` — Timezone Unaware
+
+**File:** `backend/leave/schemas.py:171-176`
+
+```python
+@field_validator("work_date")
+@classmethod
+def work_date_not_future(cls, v: date) -> date:
+    from datetime import date as _date
+    if v > _date.today():
+        raise ValueError("work_date cannot be in the future.")
+    return v
+```
+
+**Finding:** `date.today()` returns the server's local date, which may differ from the user's local date (IST). An employee submitting a comp-off near midnight could be incorrectly rejected or allowed.
+
+**Impact:** Edge-case validation errors near midnight; inconsistent behavior across timezones.
+
+**Fix:** Use timezone-aware comparison with `Asia/Kolkata`.
+
+---
+
+#### M-10: Migration Scripts Have Hardcoded Paths
+
+**File:** `migration/config.py:11-15`
+
+```python
+_SQLITE_CANDIDATES = [
+    os.environ.get("KEKA_SQLITE_PATH", ""),
+    "/Users/allfred/scripts/keka/keka_hr.db",
+    "/Users/donna/.openclaw/workspace/scripts/keka/data/keka.db",
+    "/Users/allfred/scripts/keka/data/keka.db",
+]
+```
+
+**Finding:** Migration config contains hardcoded paths referencing specific user home directories on specific machines.
+
+**Impact:** Migration fails on any machine that isn't `allfred` or `donna`. Minor security issue — exposes internal infrastructure paths.
+
+**Fix:** Remove hardcoded paths; rely solely on the `KEKA_SQLITE_PATH` environment variable.
+
+---
+
+#### M-11: No Request Body Size Limit
+
+**File:** `backend/main.py` — No body size middleware configured
+
+**Finding:** FastAPI does not impose a request body size limit by default. Combined with M-1 (arbitrary JSON in JSONB fields), an attacker can send multi-MB request bodies.
+
+**Impact:** Memory exhaustion DoS.
+
+**Fix:** Add a body size limit middleware or use a reverse proxy (nginx) with `client_max_body_size`.
+
+---
+
+#### M-12: Leave Balance Race Condition on Concurrent Requests
+
+**File:** `backend/leave/service.py:267-280`
+
+```python
+# Check sufficient balance
+balance = bal_result.scalars().first()
+pending = await LeaveService._get_pending_days(...)
+available = balance.current_balance - pending
+if total_days > available:
+    raise ValidationException(...)
+# ... later ...
+db.add(leave_request)
+await db.flush()
+```
+
+**Finding:** The balance check and leave request creation are not atomic. Two concurrent leave requests from the same employee could both pass the balance check before either is committed, resulting in negative balance.
+
+**Impact:** Employees can overdraw leave balance via concurrent requests.
+
+**Fix:** Use `SELECT ... FOR UPDATE` on the balance row, or add a database-level CHECK constraint on `current_balance >= 0`.
+
+---
+
+### 🟢 LOW (Improve When Convenient)
+
+#### L-1: Unused Import in `auth/router.py`
+
+**File:** `backend/auth/router.py:5`
+
+```python
+import hashlib
+import uuid  # ← uuid is imported but never used in this file
+```
+
+Line 6: `uuid` is imported but never referenced.
+
+Also at line 8: `from sqlalchemy import func, select` — `func` and `select` are imported but not used directly in the router (they're used via service).
+
+---
+
+#### L-2: `EmployeeUpdate.employment_status` and Enum Fields Are `Optional[str]` Not Enum
+
+**File:** `backend/core_hr/schemas.py:158`
+
+```python
+employment_status: Optional[str] = None
+```
+
+**Finding:** Several fields that map to PostgreSQL enums are typed as `Optional[str]` in the schema, bypassing Pydantic validation. Invalid enum values will only be caught at the database level, producing a 500 instead of a 422.
+
+Also applies to: `gender`, `blood_group`, `marital_status` in both `EmployeeCreate` and `EmployeeUpdate`.
+
+**Fix:** Use the enum types directly: `Optional[EmploymentStatus]`, `Optional[GenderType]`, etc.
+
+---
+
+#### L-3: `get_employee` in Router Calls Service Twice for Manager Case
+
+**File:** `backend/core_hr/router.py:117-126`
+
+```python
+if is_manager:
+    detail = await EmployeeService.get_employee(db, employee_id)  # Call 1
+    if detail.reporting_manager and ...:
+        return {"data": detail.model_dump(...)}
+    raise ForbiddenException(...)
+
+detail = await EmployeeService.get_employee(db, employee_id)  # Call 2
+```
+
+**Finding:** For HR admins or self-access, `get_employee()` is called once. But for managers with valid access, it's already called in the auth check. For non-managers who aren't HR, the first call is wasted. Consider restructuring to call once.
+
+---
+
+#### L-4: `AppSetting` Model Defined but Never Used
+
+**File:** `backend/common/models.py:44-58`
+
+**Finding:** `AppSetting` ORM model is defined but never referenced anywhere in the codebase.
+
+---
+
+#### L-5: Inconsistent `__init__.py` Exports
+
+**Files:**
+- `backend/common/__init__.py` — Exports everything (70+ symbols)
+- `backend/core_hr/__init__.py` — Exports only models
+- `backend/auth/__init__.py` — Empty
+- `backend/leave/__init__.py` — Empty
+- `backend/attendance/__init__.py` — Empty
+- `backend/notifications/__init__.py` — Only a docstring
+
+**Finding:** Module `__init__.py` files are inconsistent. Some export everything, some nothing. This makes import patterns unpredictable.
+
+---
+
+#### L-6: No Logging Framework — Only SQL Echo and Print Statements
+
+**Files:**
+- `backend/database.py:11` — SQL echo to stdout
+- `migration/*.py` — Uses `print()` statements
+
+**Finding:** The application has no structured logging (no `logging.getLogger`, no `structlog`, no correlation IDs). Debugging in production will be extremely difficult.
+
+**Fix:** Add structured logging with `structlog` or Python's `logging` module with JSON formatter.
+
+---
+
+#### L-7: `EmployeeSummary` / `EmployeeListItem` / `EmployeeDetail` All Duplicate `_build_display_name`
+
+**File:** `backend/core_hr/schemas.py:185, 215, 264`
+
+**Finding:** The same `_build_display_name` model validator is copy-pasted across three schema classes. This violates DRY.
+
+**Fix:** Extract to a base class or mixin:
+
+```python
+class DisplayNameMixin(BaseModel):
+    @model_validator(mode="before")
+    @classmethod
+    def _build_display_name(cls, data): ...
+```
+
+---
+
+#### L-8: `ensure_display_name()` Called Imperatively Instead of Declaratively
+
+**File:** `backend/core_hr/models.py:266-269`
+
+```python
+def ensure_display_name(self) -> None:
+    if not self.display_name:
+        self.display_name = f"{self.first_name} {self.last_name}".strip()
+```
+
+**Finding:** This method must be called manually before serialization. It's easily forgotten (and is indeed called inconsistently — sometimes in service, sometimes in schema validators). Consider using a SQLAlchemy `@validates` or `before_flush` event.
+
+---
+
+#### L-9: No Health Check for Database or Redis Connectivity
+
+**File:** `backend/main.py:55-60`
+
+```python
+@app.get("/api/v1/health")
+async def health_check():
+    return {"status": "healthy", ...}
+```
+
+**Finding:** The health check always returns "healthy" regardless of database or Redis connectivity. A load balancer using this endpoint will route traffic to a node that can't serve requests.
+
+**Fix:** Add actual connectivity checks:
+
+```python
+async def health_check(db: AsyncSession = Depends(get_db)):
+    await db.execute(text("SELECT 1"))
+    return {"status": "healthy", "db": "connected", ...}
+```
+
+---
+
+#### L-10: Missing Test Coverage for Critical Paths
+
+**File:** `tests/` — Only `test_auth.py`, `test_health.py`, `conftest.py`
+
+**Finding:** The test suite only covers health check and basic auth. No tests exist for:
+- RBAC enforcement (role hierarchy, permission checks)
+- Employee CRUD with access control
+- Leave application with balance validation
+- Attendance clock in/out
+- Notification delivery
+- Pagination, filtering, search
+- Edge cases (concurrent requests, timezone boundaries)
+
+**Impact:** No automated safety net for regressions.
+
+---
+
+## Missing Security Controls
+
+| Control | Status |
+|---------|--------|
+| Rate limiting | ❌ Missing |
+| Request body size limit | ❌ Missing |
+| CSRF protection | ⚠️ Relies on SameSite cookies (JWT Bearer mitigates) |
+| Input sanitization (XSS) | ⚠️ No HTML encoding on JSONB fields |
+| SQL injection protection | ❌ ORDER BY injection via `text()` |
+| Secrets management | ❌ Hardcoded defaults |
+| Session cleanup | ❌ No expiry garbage collection |
+| Structured logging | ❌ Missing |
+| Error masking (500s) | ⚠️ No generic exception handler — stack traces may leak |
+
+---
+
+## Architecture Observations (Non-Blocking)
+
+1. **Well-designed module boundaries** — Each domain (auth, core_hr, leave, attendance, notifications) has clean model/schema/service/router separation.
+
+2. **Good RBAC foundation** — Role hierarchy with permission-based checks is properly implemented. The `require_role()` and `require_permission()` dependency pattern is clean.
+
+3. **Audit trail is comprehensive** — Every significant mutation creates an audit entry with old/new values, actor, IP, and user-agent.
+
+4. **Pagination pattern is reusable** — The `paginate()` helper with `PaginationParams` dependency is well-designed.
+
+5. **60% of the backend is unrouted** — Attendance, leave, and dashboard modules need routers before the system is functional.
+
+---
+
+## Recommended Priority Order
+
+1. **Immediate (before any deployment):** C-1, C-2, C-3, C-4
+2. **Before production:** H-1 through H-7
+3. **Before beta users:** M-1, M-3, M-8, M-12
+4. **Sprint backlog:** Remaining Medium and Low items
+
+---
+
+*End of review — Vision 📊*
