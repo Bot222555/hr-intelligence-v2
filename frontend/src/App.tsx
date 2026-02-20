@@ -25,6 +25,7 @@ import { NotFoundPage } from "@/pages/NotFoundPage";
 import { SettingsPage } from "@/pages/admin/SettingsPage";
 import { RolesPage } from "@/pages/admin/RolesPage";
 import { HolidaysPage } from "@/pages/admin/HolidaysPage";
+import { RoleGuard } from "@/components/layout/RoleGuard";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -65,10 +66,10 @@ export default function App() {
                 <Route path="salary" element={<SalaryPage />} />
                 <Route path="helpdesk" element={<HelpdeskPage />} />
                 <Route path="expenses" element={<ExpensesPage />} />
-                <Route path="fnf" element={<FnFPage />} />
-                <Route path="admin/settings" element={<SettingsPage />} />
-                <Route path="admin/roles" element={<RolesPage />} />
-                <Route path="admin/holidays" element={<HolidaysPage />} />
+                <Route path="fnf" element={<RoleGuard allowedRoles={["hr_admin", "system_admin"]}><FnFPage /></RoleGuard>} />
+                <Route path="admin/settings" element={<RoleGuard allowedRoles={["hr_admin", "system_admin"]}><SettingsPage /></RoleGuard>} />
+                <Route path="admin/roles" element={<RoleGuard allowedRoles={["hr_admin", "system_admin"]}><RolesPage /></RoleGuard>} />
+                <Route path="admin/holidays" element={<RoleGuard allowedRoles={["hr_admin", "system_admin"]}><HolidaysPage /></RoleGuard>} />
               </Route>
 
               {/* 404 */}

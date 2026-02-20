@@ -38,7 +38,7 @@ class SalaryComponent(Base):
         sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc),
     )
 
     def __repr__(self) -> str:
@@ -88,7 +88,7 @@ class Salary(Base):
         sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships

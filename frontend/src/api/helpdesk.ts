@@ -20,7 +20,7 @@ import type { PaginationMeta } from "@/lib/types";
 // ── Types ──────────────────────────────────────────────────────────
 
 export type TicketStatus = "open" | "in_progress" | "resolved" | "closed";
-export type TicketPriority = "low" | "medium" | "high" | "urgent";
+export type TicketPriority = "low" | "medium" | "high" | "critical" | "urgent";
 export type TicketCategory =
   | "it_support"
   | "hr_query"

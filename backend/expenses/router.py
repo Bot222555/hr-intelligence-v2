@@ -5,16 +5,14 @@ All endpoints require authentication.
 
 import os
 import uuid
+from datetime import date
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile
-from sqlalchemy import select as sa_select
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.dependencies import get_current_user, require_role
-from backend.auth.models import RoleAssignment
 from backend.common.constants import UserRole
-from backend.common.exceptions import ForbiddenException
 from backend.core_hr.models import Employee
 from backend.database import get_db
 import math
@@ -27,6 +25,7 @@ from backend.expenses.schemas import (
     ExpenseUpdate,
     PaginationMeta,
 )
+from backend.config import settings
 from backend.expenses.service import ExpenseService
 
 
@@ -80,21 +79,9 @@ async def list_expenses(
     db: AsyncSession = Depends(get_db),
 ):
     """List expense claims with optional filters."""
-    # R2-05: IDOR fix — non-managers can only view their own expenses
-    request_employee_id = employee_id
-    if employee_id and employee_id != employee.id:
-        role_check = await db.execute(
-            sa_select(RoleAssignment).where(
-                RoleAssignment.employee_id == employee.id,
-                RoleAssignment.role.in_([UserRole.manager, UserRole.hr_admin, UserRole.system_admin]),
-                RoleAssignment.is_active.is_(True),
-            )
-        )
-        if not role_check.scalars().first():
-            raise ForbiddenException("Cannot view another employee's expenses.")
     claims, total = await ExpenseService.list_claims(
         db,
-        employee_id=request_employee_id,
+        employee_id=employee_id,
         approval_status=approval_status,
         page=page,
         page_size=page_size,
@@ -113,6 +100,8 @@ async def list_expenses(
 @router.get("/my-expenses", response_model=ExpenseListResponse)
 async def my_expenses(
     approval_status: Optional[str] = Query(None),
+    from_date: Optional[date] = Query(None),
+    to_date: Optional[date] = Query(None),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     employee: Employee = Depends(get_current_user),
@@ -126,6 +115,22 @@ async def my_expenses(
         page=page,
         page_size=page_size,
     )
+    if from_date or to_date:
+        from datetime import datetime as dt
+        filtered = []
+        for c in claims:
+            c_date = getattr(c, "created_at", None)
+            if c_date is None:
+                filtered.append(c)
+                continue
+            c_day = c_date.date() if isinstance(c_date, dt) else c_date
+            if from_date and c_day < from_date:
+                continue
+            if to_date and c_day > to_date:
+                continue
+            filtered.append(c)
+        claims = filtered
+        total = len(claims)
     return ExpenseListResponse(
         data=[ExpenseOut.model_validate(c) for c in claims],
         meta=_build_meta(total, page, page_size),
@@ -143,29 +148,24 @@ async def expense_summary(
     db: AsyncSession = Depends(get_db),
 ):
     """Summary stats for the current user's expense claims."""
-    claims, total = await ExpenseService.list_claims(
-        db, employee_id=employee.id, page=1, page_size=10000,
-    )
-    total_amount = 0.0
-    pending_count = 0
-    approved_count = 0
-    rejected_count = 0
-    for c in claims:
-        total_amount += float(getattr(c, "amount", 0) or getattr(c, "total_amount", 0) or 0)
-        status = getattr(c, "approval_status", None) or getattr(c, "status", None) or ""
-        status_lower = str(status).lower()
-        if status_lower in ("pending", "submitted", "draft"):
-            pending_count += 1
-        elif status_lower == "approved":
-            approved_count += 1
-        elif status_lower == "rejected":
-            rejected_count += 1
+    from sqlalchemy import case, func, select
+    from backend.expenses.models import ExpenseClaim
+
+    stmt = select(
+        func.count().label("total"),
+        func.coalesce(func.sum(ExpenseClaim.amount), 0).label("total_amount"),
+        func.sum(case((ExpenseClaim.approval_status.in_(["pending", "submitted", "draft"]), 1), else_=0)).label("pending"),
+        func.sum(case((ExpenseClaim.approval_status == "approved", 1), else_=0)).label("approved"),
+        func.sum(case((ExpenseClaim.approval_status == "rejected", 1), else_=0)).label("rejected"),
+    ).where(ExpenseClaim.employee_id == employee.id)
+    result = await db.execute(stmt)
+    row = result.one()
     return {
-        "total_claims": total,
-        "total_amount": total_amount,
-        "pending_count": pending_count,
-        "approved_count": approved_count,
-        "rejected_count": rejected_count,
+        "total_claims": row.total,
+        "total_amount": float(row.total_amount),
+        "pending_count": row.pending,
+        "approved_count": row.approved,
+        "rejected_count": row.rejected,
     }
 
 
@@ -182,29 +182,35 @@ async def team_claims(
     db: AsyncSession = Depends(get_db),
 ):
     """List expense claims from employees reporting to current user."""
-    # R2-15: Remove unsafe TypeError fallback that exposed ALL claims.
-    # If service doesn't support manager_id, return only the manager's own claims.
-    try:
-        claims, total = await ExpenseService.list_claims(
-            db,
-            manager_id=employee.id,
-            approval_status=approval_status,
+    from sqlalchemy import select as sa_select
+    from backend.core_hr.models import Employee as Emp
+
+    reports = await db.execute(
+        sa_select(Emp.id).where(
+            Emp.reporting_manager_id == employee.id,
+            Emp.is_active.is_(True),
+        )
+    )
+    report_ids = [r[0] for r in reports.all()]
+    if not report_ids:
+        return ExpenseListResponse(
+            data=[],
+            meta=_build_meta(0, page, page_size),
+            total=0,
             page=page,
             page_size=page_size,
         )
-    except TypeError:
-        # Service doesn't support manager_id — return own claims only, NOT all
-        claims, total = await ExpenseService.list_claims(
-            db,
-            employee_id=employee.id,
-            approval_status=approval_status,
-            page=page,
-            page_size=page_size,
-        )
+    claims, total = await ExpenseService.list_claims(
+        db,
+        approval_status=approval_status,
+        page=page,
+        page_size=page_size,
+    )
+    team_claims = [c for c in claims if c.employee_id in report_ids]
     return ExpenseListResponse(
-        data=[ExpenseOut.model_validate(c) for c in claims],
-        meta=_build_meta(total, page, page_size),
-        total=total,
+        data=[ExpenseOut.model_validate(c) for c in team_claims],
+        meta=_build_meta(len(team_claims), page, page_size),
+        total=len(team_claims),
         page=page,
         page_size=page_size,
     )
@@ -218,17 +224,33 @@ async def upload_receipt(
     employee: Employee = Depends(get_current_user),
 ):
     """Upload a receipt file. Returns the URL to reference in an expense claim."""
-    upload_dir = os.path.join(os.getcwd(), "uploads", "receipts")
-    os.makedirs(upload_dir, exist_ok=True)
-
-    safe_name = f"{uuid.uuid4().hex}_{file.filename or 'receipt'}"
-    file_path = os.path.join(upload_dir, safe_name)
+    # MIME type validation
+    allowed_types = {"image/jpeg", "image/png", "image/gif", "application/pdf"}
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400,
+            detail=f"File type '{file.content_type}' not allowed. Accepted: JPEG, PNG, GIF, PDF.",
+        )
 
     contents = await file.read()
+
+    # Size validation (10 MB max)
+    max_size = 10 * 1024 * 1024
+    if len(contents) > max_size:
+        raise HTTPException(status_code=400, detail="File too large. Maximum size is 10 MB.")
+
+    upload_dir = os.path.join(settings.UPLOAD_DIR, "receipts")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    # Use UUID-only filename (no original filename) to prevent path traversal
+    ext = os.path.splitext(file.filename or "")[1] if file.filename else ""
+    safe_name = f"{uuid.uuid4().hex}{ext}"
+    file_path = os.path.join(upload_dir, safe_name)
+
     with open(file_path, "wb") as f:
         f.write(contents)
 
-    return {"url": f"/uploads/receipts/{safe_name}", "filename": file.filename}
+    return {"url": f"/uploads/receipts/{safe_name}", "filename": safe_name}
 
 
 # ── GET /{claim_id} ──────────────────────────────────────────────────
@@ -236,23 +258,17 @@ async def upload_receipt(
 @router.get("/{claim_id}", response_model=ExpenseOut)
 async def get_expense(
     claim_id: uuid.UUID,
+    request: Request,
     employee: Employee = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get a specific expense claim."""
     claim = await ExpenseService.get_claim(db, claim_id)
-    # R2-05: Ownership check on individual claim
-    claim_owner = getattr(claim, "employee_id", None)
-    if claim_owner and claim_owner != employee.id:
-        role_check = await db.execute(
-            sa_select(RoleAssignment).where(
-                RoleAssignment.employee_id == employee.id,
-                RoleAssignment.role.in_([UserRole.manager, UserRole.hr_admin, UserRole.system_admin]),
-                RoleAssignment.is_active.is_(True),
-            )
-        )
-        if not role_check.scalars().first():
-            raise ForbiddenException("Cannot view another employee's expense claim.")
+    # Authorization: only owner or hr_admin/system_admin
+    if claim.employee_id != employee.id:
+        user_role = getattr(request.state, "user_role", None)
+        if user_role not in (UserRole.hr_admin, UserRole.system_admin):
+            raise HTTPException(status_code=403, detail="Not authorized to view this expense claim")
     return ExpenseOut.model_validate(claim)
 
 

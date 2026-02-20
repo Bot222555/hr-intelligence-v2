@@ -32,9 +32,7 @@ router = APIRouter()
 
 @router.get("/summary", response_model=DashboardSummaryResponse)
 async def dashboard_summary(
-    employee: Employee = Depends(
-        require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
-    ),
+    employee: Employee = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Dashboard KPI summary: employee count, present today, on leave,
@@ -47,9 +45,7 @@ async def dashboard_summary(
 @router.get("/attendance-trend", response_model=AttendanceTrendResponse)
 async def attendance_trend(
     days: int = Query(30, ge=7, le=90, description="Trend period in days (default 30)"),
-    employee: Employee = Depends(
-        require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
-    ),
+    employee: Employee = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Daily attendance count for the last N days (default 30)."""
@@ -60,9 +56,7 @@ async def attendance_trend(
 
 @router.get("/leave-summary", response_model=LeaveSummaryResponse)
 async def leave_summary(
-    employee: Employee = Depends(
-        require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
-    ),
+    employee: Employee = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Leave type breakdown (sick, casual, earned, etc.) for the current month."""
@@ -86,9 +80,7 @@ async def upcoming_birthdays(
 @router.get("/new-joiners", response_model=NewJoinersResponse)
 async def new_joiners(
     days: int = Query(30, ge=1, le=90, description="Lookback window in days (default 30)"),
-    employee: Employee = Depends(
-        require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
-    ),
+    employee: Employee = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Employees who joined in the last N days (default 30)."""
@@ -99,9 +91,7 @@ async def new_joiners(
 
 @router.get("/department-headcount", response_model=DepartmentHeadcountResponse)
 async def department_headcount(
-    employee: Employee = Depends(
-        require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
-    ),
+    employee: Employee = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Headcount breakdown by department with today's attendance snapshot."""

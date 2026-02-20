@@ -61,7 +61,7 @@ class Location(Base):
         sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # ── Relationships ───────────────────────────────────────────────
@@ -115,7 +115,7 @@ class Department(Base):
         sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # ── Relationships ───────────────────────────────────────────────
@@ -247,7 +247,7 @@ class Employee(Base):
         sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc),
     )
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),

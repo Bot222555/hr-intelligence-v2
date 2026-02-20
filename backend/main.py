@@ -1,8 +1,10 @@
 """HR Intelligence — FastAPI Application Factory."""
 
+import os
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from starlette.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
@@ -89,6 +91,10 @@ def create_app() -> FastAPI:
     app.include_router(helpdesk_router, prefix="/api/v1/helpdesk", tags=["helpdesk"])
     app.include_router(expenses_router, prefix="/api/v1/expenses", tags=["expenses"])
     app.include_router(fnf_router, prefix="/api/v1/fnf", tags=["fnf"])
+
+    # Serve uploaded files (receipts, etc.)
+    os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
+    app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 
     return app
 

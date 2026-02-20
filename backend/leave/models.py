@@ -48,7 +48,7 @@ class LeaveType(Base):
         sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships
@@ -97,7 +97,7 @@ class LeaveBalance(Base):
         sa.Computed("opening_balance + accrued + carry_forwarded + adjusted - used"),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships
@@ -144,7 +144,7 @@ class LeaveRequest(Base):
         sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships

@@ -49,17 +49,17 @@ export async function getNotifications(params?: {
 /** GET /notifications/unread-count */
 export async function getUnreadCount(): Promise<UnreadCountResponse> {
   const { data } = await apiClient.get("/notifications/unread-count");
-  return data;
+  return { count: data.data?.count ?? data.count ?? 0 };
 }
 
 /** PUT /notifications/{id}/read */
 export async function markAsRead(notificationId: string): Promise<Notification> {
   const { data } = await apiClient.put(`/notifications/${notificationId}/read`);
-  return data;
+  return data.data ?? data;
 }
 
 /** PUT /notifications/read-all */
 export async function markAllAsRead(): Promise<{ message: string }> {
   const { data } = await apiClient.put("/notifications/read-all");
-  return data;
+  return { message: data.message ?? "Done" };
 }

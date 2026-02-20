@@ -173,7 +173,7 @@ async def assign_role(
 # SEED
 # ═══════════════════════════════════════════════════════════════════
 
-@router.post("/holidays/seed-2026", status_code=200)
+@router.post("/holidays/seed-2026", status_code=201)
 async def seed_holidays_2026(
     _user: Employee = Depends(_admin_dep),
     db: AsyncSession = Depends(get_db),

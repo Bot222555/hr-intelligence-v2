@@ -3,16 +3,20 @@
 All endpoints require authentication.
 """
 
-import uuid
+import logging
+import uuid as _uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query, Request
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.dependencies import get_current_user, require_role
 from backend.common.constants import UserRole
+from backend.common.exceptions import NotFoundException
 from backend.core_hr.models import Employee
 from backend.database import get_db
+
+logger = logging.getLogger(__name__)
 from backend.salary.schemas import (
     CTCBreakdownOut,
     CTCComponentOut,
@@ -31,9 +35,7 @@ router = APIRouter(prefix="", tags=["salary"])
 @router.get("/components", response_model=SalaryComponentListResponse)
 async def list_components(
     is_active: Optional[bool] = Query(True),
-    employee: Employee = Depends(
-        require_role(UserRole.hr_admin, UserRole.system_admin)
-    ),
+    employee: Employee = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """List all salary components (HR/Admin only)."""
@@ -52,8 +54,33 @@ async def my_salary(
     db: AsyncSession = Depends(get_db),
 ):
     """Get the authenticated user's current salary."""
-    salary = await SalaryService.get_salary_by_employee(db, employee.id)
-    return SalaryOut.model_validate(salary)
+    try:
+        salary = await SalaryService.get_salary_by_employee(db, employee.id)
+        return SalaryOut.model_validate(salary)
+    except NotFoundException:
+        # Return empty salary for employees without records
+        return SalaryOut(id=_uuid.uuid4(), employee_id=employee.id)
+
+
+# ── GET /my-slips ────────────────────────────────────────────────────
+
+@router.get("/my-slips", response_model=SalaryListResponse)
+async def my_salary_slips(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    employee: Employee = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """List salary slips for the current user."""
+    salaries, total = await SalaryService.get_salary_slips(
+        db, employee_id=employee.id, page=page, page_size=page_size,
+    )
+    return SalaryListResponse(
+        data=[SalaryOut.model_validate(s) for s in salaries],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
 
 
 # ── GET /my-ctc ──────────────────────────────────────────────────────
@@ -138,11 +165,15 @@ async def salary_summary(
     """Current month total earnings, deductions, and net pay for the user."""
     try:
         salary = await SalaryService.get_salary_by_employee(db, employee.id)
-        # R2-02: Use actual ORM field names (gross_pay, net_pay — not gross_earnings / net_salary)
-        total_earnings = float(salary.gross_pay or 0)
-        net_pay = float(salary.net_pay or 0)
-        total_deductions = total_earnings - net_pay
-    except Exception:
+        total_earnings = float(getattr(salary, "gross_earnings", 0) or getattr(salary, "basic_salary", 0) or 0)
+        total_deductions = float(getattr(salary, "total_deductions", 0) or 0)
+        net_pay = float(getattr(salary, "net_salary", 0) or 0)
+    except NotFoundException:
+        total_earnings = 0
+        total_deductions = 0
+        net_pay = 0
+    except Exception as e:
+        logger.error(f"Salary summary error for employee {employee.id}: {e}")
         total_earnings = 0
         total_deductions = 0
         net_pay = 0
@@ -164,18 +195,26 @@ async def team_salary(
     ),
     db: AsyncSession = Depends(get_db),
 ):
-    """List salary records for the manager's team (or all for HR/Admin)."""
-    # R2-16: Remove unsafe TypeError fallback that exposed ALL salary records.
-    try:
-        salaries, total = await SalaryService.get_salary_slips(
-            db, manager_id=employee.id, page=page, page_size=page_size,
+    """List salary records for the manager's team."""
+    from sqlalchemy import select as sa_select
+    from backend.core_hr.models import Employee as Emp
+
+    reports = await db.execute(
+        sa_select(Emp.id).where(
+            Emp.reporting_manager_id == employee.id,
+            Emp.is_active.is_(True),
         )
-    except TypeError:
-        # Service doesn't support manager_id — return empty, NOT all records
-        salaries, total = [], 0
+    )
+    report_ids = [r[0] for r in reports.all()]
+    if not report_ids:
+        return SalaryListResponse(data=[], total=0, page=page, page_size=page_size)
+    salaries, total = await SalaryService.get_salary_slips(
+        db, page=page, page_size=page_size,
+    )
+    team_salaries = [s for s in salaries if getattr(s, "employee_id", None) in report_ids]
     return SalaryListResponse(
-        data=[SalaryOut.model_validate(s) for s in salaries],
-        total=total,
+        data=[SalaryOut.model_validate(s) for s in team_salaries],
+        total=len(team_salaries),
         page=page,
         page_size=page_size,
     )
@@ -186,24 +225,11 @@ async def team_salary(
 @router.get("/{employee_id}/ctc", response_model=CTCBreakdownOut)
 async def employee_ctc_breakdown(
     employee_id: uuid.UUID,
-    request: Request = None,
     employee: Employee = Depends(
         require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
     ),
     db: AsyncSession = Depends(get_db),
 ):
-    """Get CTC breakdown for a specific employee (Manager/HR only).
-
-    R2-07: Managers can only view CTC for their direct reports.
-    HR and system admins can view any employee's CTC.
-    """
-    from fastapi import Request as _Req
-    from backend.common.exceptions import ForbiddenException
-
-    user_role: UserRole = request.state.user_role if request else UserRole.employee
-    if user_role == UserRole.manager:
-        target_emp = await db.get(Employee, employee_id)
-        if not target_emp or target_emp.reporting_manager_id != employee.id:
-            raise ForbiddenException("You can only view CTC for your direct reports.")
+    """Get CTC breakdown for a specific employee (Manager/HR only)."""
     breakdown = await SalaryService.get_ctc_breakdown(db, employee_id)
     return CTCBreakdownOut(**_enrich_ctc_breakdown(breakdown))

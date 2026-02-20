@@ -104,7 +104,7 @@ export async function getMySalarySlips(params?: {
   page?: number;
   page_size?: number;
 }): Promise<SalarySlipListResponse> {
-  const { data } = await apiClient.get("/salary/slips", { params });
+  const { data } = await apiClient.get("/salary/my-slips", { params });
   return data;
 }
 

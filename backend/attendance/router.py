@@ -5,7 +5,7 @@ All endpoints require authentication. Manager/HR-specific endpoints enforce role
 
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query, Request
@@ -17,6 +17,7 @@ from backend.attendance.schemas import (
     ClockOutRequest,
     ClockResponse,
     HolidayResponse,
+    RegularizationApproveRequest,
     RegularizationCreate,
     RegularizationRejectRequest,
     RegularizationResponse,
@@ -30,6 +31,7 @@ from backend.common.constants import (
     RegularizationStatus,
     UserRole,
 )
+from backend.common.rate_limit import limiter
 from backend.core_hr.models import Employee
 from backend.database import get_db
 
@@ -39,6 +41,7 @@ router = APIRouter(prefix="", tags=["attendance"])
 # ── POST /clock-in ──────────────────────────────────────────────────
 
 @router.post("/clock-in", response_model=ClockResponse)
+@limiter.limit("2/minute")
 async def clock_in(
     body: ClockInRequest,
     request: Request,
@@ -60,6 +63,7 @@ async def clock_in(
 # ── POST /clock-out ─────────────────────────────────────────────────
 
 @router.post("/clock-out", response_model=ClockResponse)
+@limiter.limit("2/minute")
 async def clock_out(
     body: ClockOutRequest,
     request: Request,
@@ -82,14 +86,18 @@ async def clock_out(
 
 @router.get("/my-attendance", response_model=AttendanceListResponse)
 async def my_attendance(
-    from_date: date = Query(..., description="Start date (inclusive)"),
-    to_date: date = Query(..., description="End date (inclusive)"),
+    from_date: Optional[date] = Query(default=None, description="Start date (inclusive)"),
+    to_date: Optional[date] = Query(default=None, description="End date (inclusive)"),
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=100),
     employee: Employee = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Get the authenticated user's attendance records with summary."""
+    if from_date is None:
+        from_date = date.today() - timedelta(days=30)
+    if to_date is None:
+        to_date = date.today()
     return await AttendanceService.get_my_attendance(
         db,
         employee.id,
@@ -169,6 +177,7 @@ async def submit_regularization(
 
 @router.get("/regularizations")
 async def list_regularizations(
+    request: Request,
     status: Optional[RegularizationStatus] = Query(None),
     employee_id: Optional[uuid.UUID] = Query(None),
     page: int = Query(1, ge=1),
@@ -180,9 +189,13 @@ async def list_regularizations(
 
     Employees see their own; managers/HR see filtered results.
     """
-    request_state = getattr(employee, "_sa_instance_state", None)
-    # Default to own regularizations for non-manager roles
-    target_employee_id = employee_id or employee.id
+    user_role = request.state.user_role
+    if employee_id:
+        target_employee_id = employee_id
+    elif user_role in (UserRole.manager, UserRole.hr_admin, UserRole.system_admin):
+        target_employee_id = None  # Show all for managers
+    else:
+        target_employee_id = employee.id  # Own only for employees
     return await AttendanceService.list_regularizations(
         db,
         status_filter=status,
@@ -197,6 +210,7 @@ async def list_regularizations(
 @router.put("/regularizations/{regularization_id}/approve", response_model=RegularizationResponse)
 async def approve_regularization(
     regularization_id: uuid.UUID,
+    body: RegularizationApproveRequest = RegularizationApproveRequest(),
     employee: Employee = Depends(
         require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
     ),

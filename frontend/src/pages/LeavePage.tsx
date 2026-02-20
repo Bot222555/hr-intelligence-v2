@@ -285,8 +285,7 @@ function BalanceCard({ balance }: { balance: LeaveBalance }) {
   const colors = LEAVE_COLORS[code] || DEFAULT_COLOR;
   const Icon = LEAVE_ICONS[code] || Calendar;
 
-  // R2-17: Use proper total entitlement instead of current_balance + used
-  const total = Number(balance.opening_balance || 0) + Number(balance.accrued || 0) + Number(balance.carry_forwarded || 0);
+  const total = Number(balance.current_balance) + Number(balance.used);
   const used = Number(balance.used);
   const available = Number(balance.available);
   const pending = Number(balance.pending);
@@ -456,13 +455,8 @@ function ApplyLeaveForm({
               <div className="text-center">
                 <p className="text-3xl font-bold tabular-nums text-primary">{dayCount}</p>
                 <p className="text-sm text-muted-foreground">
-                  {dayCount === 1 ? "day" : "days"} (calendar)
+                  {dayCount === 1 ? "day" : "days"} requested
                 </p>
-                {dayCount > 1 && (
-                  <p className="text-xs text-muted-foreground/70 mt-0.5">
-                    Excludes weekends & holidays
-                  </p>
-                )}
               </div>
             </div>
 

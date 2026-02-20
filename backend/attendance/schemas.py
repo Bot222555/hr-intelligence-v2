@@ -199,6 +199,12 @@ class RegularizationResponse(BaseModel):
     updated_at: datetime
 
 
+class RegularizationApproveRequest(BaseModel):
+    """Optional remarks when approving a regularization request."""
+
+    remarks: Optional[str] = Field(None, max_length=500)
+
+
 class RegularizationRejectRequest(BaseModel):
     """Payload for rejecting a regularization request."""
 

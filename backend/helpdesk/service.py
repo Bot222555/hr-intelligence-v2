@@ -71,6 +71,7 @@ class HelpdeskService:
         db: AsyncSession,
         status: Optional[str] = None,
         priority: Optional[str] = None,
+        category: Optional[str] = None,
         raised_by_id: Optional[uuid.UUID] = None,
         assigned_to_id: Optional[uuid.UUID] = None,
         page: int = 1,
@@ -88,6 +89,9 @@ class HelpdeskService:
         if priority:
             stmt = stmt.where(HelpdeskTicket.priority == priority)
             count_stmt = count_stmt.where(HelpdeskTicket.priority == priority)
+        if category:
+            stmt = stmt.where(HelpdeskTicket.category == category)
+            count_stmt = count_stmt.where(HelpdeskTicket.category == category)
         if raised_by_id:
             stmt = stmt.where(HelpdeskTicket.raised_by_id == raised_by_id)
             count_stmt = count_stmt.where(HelpdeskTicket.raised_by_id == raised_by_id)

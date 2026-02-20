@@ -39,10 +39,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-in-production}
+      JWT_SECRET: ${JWT_SECRET}
       ALLOWED_DOMAIN: creativefuel.io
       CORS_ORIGINS: '["http://localhost:3000", "https://hr.cfai.in"]'
-      ENVIRONMENT: ${ENVIRONMENT:-development}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
       LOG_LEVEL: ${LOG_LEVEL:-debug}
     depends_on:
       db:
