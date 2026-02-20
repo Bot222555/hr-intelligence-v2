@@ -10,6 +10,7 @@
  */
 
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   AreaChart,
@@ -34,6 +35,11 @@ import {
   Activity,
   Loader2,
   AlertCircle,
+  Banknote,
+  Ticket,
+  Receipt,
+  IndianRupee,
+  Calendar,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -47,7 +53,11 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { cn, getInitials, formatDate } from "@/lib/utils";
+import { ROUTES } from "@/lib/constants";
 import * as dashboardApi from "@/api/dashboard";
+import * as salaryApi from "@/api/salary";
+import * as helpdeskApi from "@/api/helpdesk";
+import * as expensesApi from "@/api/expenses";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -133,8 +143,17 @@ const TREND_COLORS = {
 
 // ── Component ──────────────────────────────────────────────────────
 
+function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 0,
+  }).format(amount);
+}
+
 export function DashboardPage() {
   const { user } = useAuth();
+  const navigate = useNavigate();
   const [trendPeriod, setTrendPeriod] = useState<7 | 30>(7);
 
   // ── Queries ────────────────────────────────────────────────────
@@ -167,6 +186,26 @@ export function DashboardPage() {
     queryKey: ["dashboard", "recent-activities"],
     queryFn: () => dashboardApi.getRecentActivities(15),
     staleTime: 1 * 60 * 1000,
+  });
+
+  // ── New module queries ─────────────────────────────────────────
+
+  const salarySummaryQuery = useQuery({
+    queryKey: ["dashboard", "salary-summary"],
+    queryFn: salaryApi.getSalarySummary,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const helpdeskSummaryQuery = useQuery({
+    queryKey: ["dashboard", "helpdesk-summary"],
+    queryFn: helpdeskApi.getHelpdeskSummary,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  const expenseSummaryQuery = useQuery({
+    queryKey: ["dashboard", "expense-summary"],
+    queryFn: expensesApi.getExpenseSummary,
+    staleTime: 2 * 60 * 1000,
   });
 
   // ── Render ─────────────────────────────────────────────────────
@@ -450,6 +489,118 @@ export function DashboardPage() {
                   />
                 </BarChart>
               </ResponsiveContainer>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── Quick Access: Salary, Helpdesk, Expenses ─────────────── */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        {/* Salary Summary Widget */}
+        <Card
+          className="cursor-pointer transition-all hover:shadow-md"
+          onClick={() => navigate(ROUTES.SALARY)}
+        >
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="rounded-xl bg-emerald-50 p-2.5">
+                <Banknote className="h-5 w-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Salary</p>
+                <p className="text-xs text-muted-foreground">Last month</p>
+              </div>
+            </div>
+            {salarySummaryQuery.isLoading ? (
+              <div className="h-12 animate-pulse rounded bg-muted" />
+            ) : salarySummaryQuery.data ? (
+              <div>
+                <p className="text-2xl font-bold tabular-nums text-foreground">
+                  {formatCurrency(salarySummaryQuery.data.last_month_net)}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {salarySummaryQuery.data.last_month_label}
+                  {salarySummaryQuery.data.next_payroll_date && (
+                    <span className="ml-2">
+                      · Next payroll:{" "}
+                      <span className="font-medium text-foreground">
+                        {formatShortDate(salarySummaryQuery.data.next_payroll_date)}
+                      </span>
+                    </span>
+                  )}
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">—</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Helpdesk Widget */}
+        <Card
+          className="cursor-pointer transition-all hover:shadow-md"
+          onClick={() => navigate(ROUTES.HELPDESK)}
+        >
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="rounded-xl bg-blue-50 p-2.5">
+                <Ticket className="h-5 w-5 text-blue-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Helpdesk</p>
+                <p className="text-xs text-muted-foreground">Open tickets</p>
+              </div>
+            </div>
+            {helpdeskSummaryQuery.isLoading ? (
+              <div className="h-12 animate-pulse rounded bg-muted" />
+            ) : helpdeskSummaryQuery.data ? (
+              <div>
+                <p className="text-2xl font-bold tabular-nums text-foreground">
+                  {helpdeskSummaryQuery.data.open_tickets}
+                </p>
+                <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
+                  <span>{helpdeskSummaryQuery.data.in_progress_tickets} in progress</span>
+                  <span>·</span>
+                  <span>{helpdeskSummaryQuery.data.resolved_today} resolved today</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">—</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Expenses Widget */}
+        <Card
+          className="cursor-pointer transition-all hover:shadow-md"
+          onClick={() => navigate(ROUTES.EXPENSES)}
+        >
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="rounded-xl bg-violet-50 p-2.5">
+                <Receipt className="h-5 w-5 text-violet-600" />
+              </div>
+              <div>
+                <p className="text-sm font-semibold text-foreground">Expenses</p>
+                <p className="text-xs text-muted-foreground">Pending claims</p>
+              </div>
+            </div>
+            {expenseSummaryQuery.isLoading ? (
+              <div className="h-12 animate-pulse rounded bg-muted" />
+            ) : expenseSummaryQuery.data ? (
+              <div>
+                <p className="text-2xl font-bold tabular-nums text-foreground">
+                  {expenseSummaryQuery.data.pending_count}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {formatCurrency(expenseSummaryQuery.data.total_pending)} pending
+                  <span className="ml-2">
+                    · {formatCurrency(expenseSummaryQuery.data.total_approved)} approved
+                  </span>
+                </p>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground">—</p>
             )}
           </CardContent>
         </Card>

@@ -13,6 +13,9 @@ import { RegularizationPage } from "@/pages/RegularizationPage";
 import { LeavePage } from "@/pages/LeavePage";
 import { TeamLeavePage } from "@/pages/TeamLeavePage";
 import { LeaveCalendar } from "@/pages/LeaveCalendar";
+import { SalaryPage } from "@/pages/SalaryPage";
+import { HelpdeskPage } from "@/pages/HelpdeskPage";
+import { ExpensesPage } from "@/pages/ExpensesPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
 const queryClient = new QueryClient({
@@ -47,6 +50,9 @@ export default function App() {
                 <Route path="leave" element={<LeavePage />} />
                 <Route path="leave/team" element={<TeamLeavePage />} />
                 <Route path="leave/calendar" element={<LeaveCalendar />} />
+                <Route path="salary" element={<SalaryPage />} />
+                <Route path="helpdesk" element={<HelpdeskPage />} />
+                <Route path="expenses" element={<ExpensesPage />} />
               </Route>
 
               {/* 404 */}

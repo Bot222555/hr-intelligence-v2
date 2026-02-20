@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { LayoutDashboard, Users, Clock, Calendar } from "lucide-react";
+import { LayoutDashboard, Users, Clock, Banknote, Receipt } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ROUTES } from "@/lib/constants";
 
@@ -7,7 +7,8 @@ const NAV_ITEMS = [
   { label: "Home", path: ROUTES.DASHBOARD, icon: LayoutDashboard },
   { label: "People", path: ROUTES.EMPLOYEES, icon: Users },
   { label: "Attendance", path: ROUTES.ATTENDANCE, icon: Clock },
-  { label: "Leave", path: ROUTES.LEAVE, icon: Calendar },
+  { label: "Salary", path: ROUTES.SALARY, icon: Banknote },
+  { label: "Expenses", path: ROUTES.EXPENSES, icon: Receipt },
 ];
 
 export function BottomNav() {

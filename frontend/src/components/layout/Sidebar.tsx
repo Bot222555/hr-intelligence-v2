@@ -10,6 +10,9 @@ import {
   ChevronRight,
   UsersRound,
   FileEdit,
+  Banknote,
+  Ticket,
+  Receipt,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -42,6 +45,9 @@ const NAV_ITEMS: NavItemDef[] = [
   { label: "Leave", path: ROUTES.LEAVE, icon: Calendar, end: true },
   { label: "Team Leave", path: ROUTES.TEAM_LEAVE, icon: UsersRound },
   { label: "Leave Calendar", path: ROUTES.LEAVE_CALENDAR, icon: CalendarDays },
+  { label: "Salary", path: ROUTES.SALARY, icon: Banknote },
+  { label: "Helpdesk", path: ROUTES.HELPDESK, icon: Ticket },
+  { label: "Expenses", path: ROUTES.EXPENSES, icon: Receipt },
 ];
 
 const ADMIN_ITEMS: NavItemDef[] = [

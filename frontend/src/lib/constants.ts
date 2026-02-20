@@ -13,6 +13,9 @@ export const ROUTES = {
   LEAVE: "/leave",
   TEAM_LEAVE: "/leave/team",
   LEAVE_CALENDAR: "/leave/calendar",
+  SALARY: "/salary",
+  HELPDESK: "/helpdesk",
+  EXPENSES: "/expenses",
   SETTINGS: "/settings",
 } as const;
 
