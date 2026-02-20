@@ -191,15 +191,27 @@ export async function clockOut(
 
 // ── My Attendance ──────────────────────────────────────────────────
 
-/** GET /attendance/my-attendance */
+/** GET /attendance/my-attendance — defaults to last 30 days if dates omitted */
 export async function getMyAttendance(
-  fromDate: string,
-  toDate: string,
+  fromDate?: string,
+  toDate?: string,
   page: number = 1,
   pageSize: number = 50,
 ): Promise<AttendanceListResponse> {
+  const now = new Date();
+  const resolvedTo = toDate || now.toISOString().split("T")[0];
+  const resolvedFrom =
+    fromDate ||
+    new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+      .toISOString()
+      .split("T")[0];
   const { data } = await apiClient.get("/attendance/my-attendance", {
-    params: { from_date: fromDate, to_date: toDate, page, page_size: pageSize },
+    params: {
+      from_date: resolvedFrom,
+      to_date: resolvedTo,
+      page,
+      page_size: pageSize,
+    },
   });
   return data;
 }

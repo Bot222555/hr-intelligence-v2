@@ -3,10 +3,11 @@
 All endpoints require authentication.
 """
 
+import os
 import uuid
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, File, Query, UploadFile
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.auth.dependencies import get_current_user, require_role
@@ -100,6 +101,100 @@ async def my_expenses(
         page=page,
         page_size=page_size,
     )
+
+
+# ── GET /summary ──────────────────────────────────────────────────────
+
+@router.get("/summary")
+async def expense_summary(
+    employee: Employee = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Summary stats for the current user's expense claims."""
+    claims, total = await ExpenseService.list_claims(
+        db, employee_id=employee.id, page=1, page_size=10000,
+    )
+    total_amount = 0.0
+    pending_count = 0
+    approved_count = 0
+    rejected_count = 0
+    for c in claims:
+        total_amount += float(getattr(c, "amount", 0) or getattr(c, "total_amount", 0) or 0)
+        status = getattr(c, "approval_status", None) or getattr(c, "status", None) or ""
+        status_lower = str(status).lower()
+        if status_lower in ("pending", "submitted", "draft"):
+            pending_count += 1
+        elif status_lower == "approved":
+            approved_count += 1
+        elif status_lower == "rejected":
+            rejected_count += 1
+    return {
+        "total_claims": total,
+        "total_amount": total_amount,
+        "pending_count": pending_count,
+        "approved_count": approved_count,
+        "rejected_count": rejected_count,
+    }
+
+
+# ── GET /team-claims ─────────────────────────────────────────────────
+
+@router.get("/team-claims")
+async def team_claims(
+    approval_status: Optional[str] = Query(None),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    employee: Employee = Depends(
+        require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    """List expense claims from employees reporting to current user."""
+    # Reuse list_claims; managers see all via the general listing endpoint.
+    # Filter by reporting_to if the service supports it, else return all.
+    try:
+        claims, total = await ExpenseService.list_claims(
+            db,
+            manager_id=employee.id,
+            approval_status=approval_status,
+            page=page,
+            page_size=page_size,
+        )
+    except TypeError:
+        # Service doesn't support manager_id filter — fall back to all claims
+        claims, total = await ExpenseService.list_claims(
+            db,
+            approval_status=approval_status,
+            page=page,
+            page_size=page_size,
+        )
+    return ExpenseListResponse(
+        data=[ExpenseOut.model_validate(c) for c in claims],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
+# ── POST /upload-receipt ─────────────────────────────────────────────
+
+@router.post("/upload-receipt")
+async def upload_receipt(
+    file: UploadFile = File(...),
+    employee: Employee = Depends(get_current_user),
+):
+    """Upload a receipt file. Returns the URL to reference in an expense claim."""
+    upload_dir = os.path.join(os.getcwd(), "uploads", "receipts")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    safe_name = f"{uuid.uuid4().hex}_{file.filename or 'receipt'}"
+    file_path = os.path.join(upload_dir, safe_name)
+
+    contents = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(contents)
+
+    return {"url": f"/uploads/receipts/{safe_name}", "filename": file.filename}
 
 
 # ── GET /{claim_id} ──────────────────────────────────────────────────

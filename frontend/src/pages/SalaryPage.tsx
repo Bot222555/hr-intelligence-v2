@@ -525,7 +525,7 @@ function SlipDetailCard({
               <div className="mt-2 border-t pt-2">
                 <div className="flex justify-between text-sm font-bold text-foreground">
                   <span>Gross Earnings</span>
-                  <span className="tabular-nums">{formatCurrency(slip.gross_earnings)}</span>
+                  <span className="tabular-nums">{formatCurrency(slip.gross_earnings ?? 0)}</span>
                 </div>
               </div>
             </div>
@@ -545,7 +545,7 @@ function SlipDetailCard({
                 <div className="flex justify-between text-sm font-bold text-foreground">
                   <span>Total Deductions</span>
                   <span className="tabular-nums text-red-600">
-                    -{formatCurrency(slip.total_deductions)}
+                    -{formatCurrency(slip.total_deductions ?? 0)}
                   </span>
                 </div>
               </div>
@@ -564,17 +564,17 @@ function SlipDetailCard({
                   Net Salary
                 </p>
                 <p className="mt-1 text-3xl font-bold tabular-nums text-primary">
-                  {formatCurrency(slip.net_salary)}
+                  {formatCurrency(slip.net_salary ?? 0)}
                 </p>
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
                   <span className="text-muted-foreground">Days Worked</span>
                   <span className="font-medium text-foreground">
-                    {slip.days_worked}/{slip.days_payable}
+                    {slip.days_worked ?? 0}/{slip.days_payable ?? 0}
                   </span>
                 </div>
-                {slip.loss_of_pay_days > 0 && (
+                {(slip.loss_of_pay_days ?? 0) > 0 && (
                   <div className="flex justify-between">
                     <span className="text-muted-foreground">LOP Days</span>
                     <span className="font-medium text-red-600">

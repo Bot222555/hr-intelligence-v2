@@ -175,7 +175,7 @@ export function AttendancePage() {
 
   // Derive today's record to initialize clock state
   const todayStr = toDateStr(today);
-  const todayRecord = attendanceData?.data.find((r) => r.date === todayStr);
+  const todayRecord = (attendanceData?.data ?? []).find((r) => r.date === todayStr);
 
   useEffect(() => {
     if (todayRecord && todayRecord.first_clock_in && !todayRecord.last_clock_out) {
@@ -231,13 +231,13 @@ export function AttendancePage() {
 
   const recordMap = useMemo(() => {
     const map = new Map<string, AttendanceRecord>();
-    attendanceData?.data.forEach((r) => map.set(r.date, r));
+    (attendanceData?.data ?? []).forEach((r) => map.set(r.date, r));
     return map;
   }, [attendanceData]);
 
   const holidayMap = useMemo(() => {
     const map = new Map<string, Holiday>();
-    holidays?.forEach((h) => map.set(h.date, h));
+    (holidays ?? []).forEach((h) => map.set(h.date, h));
     return map;
   }, [holidays]);
 

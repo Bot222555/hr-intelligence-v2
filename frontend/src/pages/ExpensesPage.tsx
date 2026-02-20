@@ -308,23 +308,23 @@ export function ExpensesPage() {
           </div>
 
           {/* Pagination */}
-          {activeData && activeData.meta.total_pages > 1 && (
+          {activeData && (activeData?.meta?.total_pages ?? 0) > 1 && (
             <div className="mt-4 flex items-center justify-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                disabled={!activeData.meta.has_prev}
+                disabled={!activeData?.meta?.has_prev}
                 onClick={() => setPage((p) => p - 1)}
               >
                 <ChevronLeft className="h-4 w-4" /> Previous
               </Button>
               <span className="text-sm text-muted-foreground">
-                Page {activeData.meta.page} of {activeData.meta.total_pages}
+                Page {activeData?.meta?.page ?? 1} of {activeData?.meta?.total_pages ?? 1}
               </span>
               <Button
                 variant="outline"
                 size="sm"
-                disabled={!activeData.meta.has_next}
+                disabled={!activeData?.meta?.has_next}
                 onClick={() => setPage((p) => p + 1)}
               >
                 Next <ChevronRight className="h-4 w-4" />

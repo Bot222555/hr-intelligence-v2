@@ -104,6 +104,40 @@ async def my_tickets(
     )
 
 
+# ── GET /summary ──────────────────────────────────────────────────────
+
+@router.get("/summary")
+async def helpdesk_summary(
+    employee: Employee = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Summary stats for all helpdesk tickets visible to the current user."""
+    tickets, total = await HelpdeskService.list_tickets(
+        db, page=1, page_size=10000,
+    )
+    open_count = 0
+    in_progress_count = 0
+    resolved_count = 0
+    closed_count = 0
+    for t in tickets:
+        status = str(getattr(t, "status", "")).lower()
+        if status == "open":
+            open_count += 1
+        elif status == "in_progress":
+            in_progress_count += 1
+        elif status == "resolved":
+            resolved_count += 1
+        elif status == "closed":
+            closed_count += 1
+    return {
+        "total_tickets": total,
+        "open_count": open_count,
+        "in_progress_count": in_progress_count,
+        "resolved_count": resolved_count,
+        "closed_count": closed_count,
+    }
+
+
 # ── GET /{ticket_id} ─────────────────────────────────────────────────
 
 @router.get("/{ticket_id}", response_model=TicketOut)

@@ -230,7 +230,7 @@ export function OrgChartPage() {
   const countNodes = (nodes: OrgChartNode[]): number =>
     nodes.reduce((acc, n) => acc + 1 + countNodes(n.children), 0);
 
-  const totalNodes = orgData?.data ? countNodes(orgData.data) : 0;
+  const totalNodes = orgData?.data?.length ? countNodes(orgData.data) : 0;
 
   return (
     <div className="flex h-full flex-col">
@@ -302,7 +302,7 @@ export function OrgChartPage() {
           </div>
         )}
 
-        {orgData && orgData.data.length === 0 && (
+        {orgData && (orgData?.data ?? []).length === 0 && (
           <div className="flex h-full flex-col items-center justify-center text-muted-foreground">
             <Users className="h-12 w-12 mb-3 opacity-40" />
             <p className="text-lg font-medium">No organisation data available</p>
@@ -310,7 +310,7 @@ export function OrgChartPage() {
           </div>
         )}
 
-        {orgData && orgData.data.length > 0 && (
+        {orgData && (orgData?.data ?? []).length > 0 && (
           <div
             className="inline-flex min-w-full min-h-full items-start justify-center p-12"
             style={{

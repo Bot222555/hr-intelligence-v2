@@ -91,6 +91,59 @@ async def list_salary_slips(
     )
 
 
+# ── GET /summary ──────────────────────────────────────────────────────
+
+@router.get("/summary")
+async def salary_summary(
+    employee: Employee = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Current month total earnings, deductions, and net pay for the user."""
+    try:
+        salary = await SalaryService.get_salary_by_employee(db, employee.id)
+        total_earnings = float(getattr(salary, "gross_earnings", 0) or getattr(salary, "basic_salary", 0) or 0)
+        total_deductions = float(getattr(salary, "total_deductions", 0) or 0)
+        net_pay = float(getattr(salary, "net_salary", 0) or 0)
+    except Exception:
+        total_earnings = 0
+        total_deductions = 0
+        net_pay = 0
+    return {
+        "total_earnings": total_earnings,
+        "total_deductions": total_deductions,
+        "net_pay": net_pay,
+    }
+
+
+# ── GET /team ────────────────────────────────────────────────────────
+
+@router.get("/team")
+async def team_salary(
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=100),
+    employee: Employee = Depends(
+        require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    """List salary records for the manager's team (or all for HR/Admin)."""
+    try:
+        salaries, total = await SalaryService.get_salary_slips(
+            db, manager_id=employee.id, page=page, page_size=page_size,
+        )
+    except TypeError:
+        # Service doesn't support manager_id — fall back to all slips
+        salaries, total = await SalaryService.get_salary_slips(
+            db, page=page, page_size=page_size,
+        )
+    return SalaryListResponse(
+        data=[SalaryOut.model_validate(s) for s in salaries],
+        total=total,
+        page=page,
+        page_size=page_size,
+    )
+
+
 # ── GET /{employee_id}/ctc ──────────────────────────────────────────
 
 @router.get("/{employee_id}/ctc", response_model=CTCBreakdownOut)

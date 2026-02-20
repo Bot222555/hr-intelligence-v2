@@ -294,7 +294,7 @@ export function DashboardPage() {
               <CardDescription>
                 Avg attendance rate:{" "}
                 <span className="font-medium text-foreground">
-                  {trendQuery.data.averages.avg_attendance_rate}%
+                  {trendQuery.data?.averages?.avg_attendance_rate ?? 0}%
                 </span>
               </CardDescription>
             )}
@@ -443,7 +443,7 @@ export function DashboardPage() {
             </div>
             {headcountQuery.data && (
               <CardDescription>
-                {headcountQuery.data.total_departments ?? 0} departments
+                {headcountQuery.data?.total_departments ?? 0} departments
               </CardDescription>
             )}
           </CardHeader>

@@ -250,7 +250,7 @@ export function HelpdeskPage() {
       ) : (
         <>
           <div className="space-y-3">
-            {ticketsData?.data.map((ticket) => (
+            {(ticketsData?.data ?? []).map((ticket) => (
               <TicketCard
                 key={ticket.id}
                 ticket={ticket}
@@ -262,7 +262,7 @@ export function HelpdeskPage() {
                 }
               />
             ))}
-            {ticketsData?.data.length === 0 && (
+            {(ticketsData?.data ?? []).length === 0 && (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-16">
                   <Ticket className="h-12 w-12 text-muted-foreground/40" />
@@ -283,23 +283,23 @@ export function HelpdeskPage() {
           </div>
 
           {/* Pagination */}
-          {ticketsData && ticketsData.meta.total_pages > 1 && (
+          {ticketsData && (ticketsData?.meta?.total_pages ?? 0) > 1 && (
             <div className="mt-4 flex items-center justify-center gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                disabled={!ticketsData.meta.has_prev}
+                disabled={!ticketsData?.meta?.has_prev}
                 onClick={() => setPage((p) => p - 1)}
               >
                 <ChevronLeft className="h-4 w-4" /> Previous
               </Button>
               <span className="text-sm text-muted-foreground">
-                Page {ticketsData.meta.page} of {ticketsData.meta.total_pages}
+                Page {ticketsData?.meta?.page ?? 1} of {ticketsData?.meta?.total_pages ?? 1}
               </span>
               <Button
                 variant="outline"
                 size="sm"
-                disabled={!ticketsData.meta.has_next}
+                disabled={!ticketsData?.meta?.has_next}
                 onClick={() => setPage((p) => p + 1)}
               >
                 Next <ChevronRight className="h-4 w-4" />

@@ -165,10 +165,10 @@ export function LeavePage() {
           </div>
         ) : (
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-            {balances?.map((balance) => (
+            {(balances ?? []).map((balance) => (
               <BalanceCard key={balance.id} balance={balance} />
             ))}
-            {balances?.length === 0 && (
+            {(balances ?? []).length === 0 && (
               <Card className="col-span-full">
                 <CardContent className="flex flex-col items-center justify-center py-12">
                   <Calendar className="h-10 w-10 text-muted-foreground/40" />
@@ -229,10 +229,10 @@ export function LeavePage() {
         ) : (
           <>
             <div className="space-y-3">
-              {myLeaves?.data.map((req) => (
+              {(myLeaves?.data ?? []).map((req) => (
                 <LeaveRequestCard key={req.id} request={req} />
               ))}
-              {myLeaves?.data.length === 0 && (
+              {(myLeaves?.data ?? []).length === 0 && (
                 <Card>
                   <CardContent className="flex flex-col items-center justify-center py-12">
                     <Calendar className="h-10 w-10 text-muted-foreground/40" />
@@ -245,24 +245,24 @@ export function LeavePage() {
             </div>
 
             {/* Pagination */}
-            {myLeaves && myLeaves.meta.total_pages > 1 && (
+            {myLeaves && (myLeaves?.meta?.total_pages ?? 0) > 1 && (
               <div className="mt-4 flex items-center justify-center gap-2">
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!myLeaves.meta.has_prev}
+                  disabled={!myLeaves?.meta?.has_prev}
                   onClick={() => setPage((p) => p - 1)}
                 >
                   <ChevronLeft className="h-4 w-4" />
                   Previous
                 </Button>
                 <span className="text-sm text-muted-foreground">
-                  Page {myLeaves.meta.page} of {myLeaves.meta.total_pages}
+                  Page {myLeaves?.meta?.page ?? 1} of {myLeaves?.meta?.total_pages ?? 1}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
-                  disabled={!myLeaves.meta.has_next}
+                  disabled={!myLeaves?.meta?.has_next}
                   onClick={() => setPage((p) => p + 1)}
                 >
                   Next
