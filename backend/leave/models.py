@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -27,28 +27,28 @@ class LeaveType(Base):
     name: Mapped[str] = mapped_column(sa.String(100), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(sa.Text)
     default_balance: Mapped[Decimal] = mapped_column(
-        sa.Numeric(5, 1), server_default=sa.text("0")
+        sa.Numeric(5, 1), default=0
     )
     max_carry_forward: Mapped[Decimal] = mapped_column(
-        sa.Numeric(5, 1), server_default=sa.text("0")
+        sa.Numeric(5, 1), default=0
     )
-    is_paid: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("TRUE"))
+    is_paid: Mapped[bool] = mapped_column(sa.Boolean, default=True)
     requires_approval: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("TRUE")
+        sa.Boolean, default=True
     )
     min_days_notice: Mapped[int] = mapped_column(
-        sa.Integer, server_default=sa.text("0")
+        sa.Integer, default=0
     )
     max_consecutive_days: Mapped[Optional[int]] = mapped_column(sa.Integer)
-    is_active: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("TRUE"))
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, default=True)
     applicable_gender: Mapped[Optional[GenderType]] = mapped_column(
         sa.Enum(GenderType, name="gender_type", create_type=False)
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -77,19 +77,19 @@ class LeaveBalance(Base):
     )
     year: Mapped[int] = mapped_column(sa.Integer, nullable=False)
     opening_balance: Mapped[Decimal] = mapped_column(
-        sa.Numeric(5, 1), server_default=sa.text("0")
+        sa.Numeric(5, 1), default=0
     )
     accrued: Mapped[Decimal] = mapped_column(
-        sa.Numeric(5, 1), server_default=sa.text("0")
+        sa.Numeric(5, 1), default=0
     )
     used: Mapped[Decimal] = mapped_column(
-        sa.Numeric(5, 1), server_default=sa.text("0")
+        sa.Numeric(5, 1), default=0
     )
     carry_forwarded: Mapped[Decimal] = mapped_column(
-        sa.Numeric(5, 1), server_default=sa.text("0")
+        sa.Numeric(5, 1), default=0
     )
     adjusted: Mapped[Decimal] = mapped_column(
-        sa.Numeric(5, 1), server_default=sa.text("0")
+        sa.Numeric(5, 1), default=0
     )
     # current_balance is a GENERATED ALWAYS column — read-only in ORM
     current_balance: Mapped[Decimal] = mapped_column(
@@ -97,7 +97,7 @@ class LeaveBalance(Base):
         sa.Computed("opening_balance + accrued + carry_forwarded + adjusted - used"),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -128,7 +128,7 @@ class LeaveRequest(Base):
     reason: Mapped[Optional[str]] = mapped_column(sa.Text)
     status: Mapped[LeaveStatus] = mapped_column(
         sa.Enum(LeaveStatus, name="leave_status", create_type=False),
-        server_default="pending",
+        default="pending",
     )
     reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("employees.id")
@@ -141,10 +141,10 @@ class LeaveRequest(Base):
         sa.DateTime(timezone=True)
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -180,12 +180,12 @@ class CompOffGrant(Base):
         UUID(as_uuid=True), sa.ForeignKey("employees.id")
     )
     expires_at: Mapped[Optional[date]] = mapped_column(sa.Date)
-    is_used: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("FALSE"))
+    is_used: Mapped[bool] = mapped_column(sa.Boolean, default=False)
     leave_request_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("leave_requests.id")
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships

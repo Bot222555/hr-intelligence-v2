@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import sqlalchemy as sa
@@ -35,10 +35,10 @@ class UserSession(Base):
         sa.DateTime(timezone=True), nullable=False
     )
     is_revoked: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("FALSE")
+        sa.Boolean, default=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -67,13 +67,13 @@ class RoleAssignment(Base):
         UUID(as_uuid=True), sa.ForeignKey("employees.id")
     )
     assigned_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     revoked_at: Mapped[Optional[datetime]] = mapped_column(
         sa.DateTime(timezone=True)
     )
     is_active: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("TRUE")
+        sa.Boolean, default=True
     )
 
     # Relationships

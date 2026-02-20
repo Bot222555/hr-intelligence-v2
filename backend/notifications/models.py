@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import sqlalchemy as sa
@@ -29,7 +29,7 @@ class Notification(Base):
     )
     type: Mapped[NotificationType] = mapped_column(
         sa.Enum(NotificationType, name="notification_type", create_type=False),
-        server_default="info",
+        default="info",
     )
     title: Mapped[str] = mapped_column(sa.String(200), nullable=False)
     message: Mapped[str] = mapped_column(sa.Text, nullable=False)
@@ -37,11 +37,11 @@ class Notification(Base):
     entity_type: Mapped[Optional[str]] = mapped_column(sa.String(50))
     entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     is_read: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("FALSE"),
+        sa.Boolean, default=False,
     )
     read_at: Mapped[Optional[datetime]] = mapped_column(sa.DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now(),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
 
     # Relationships

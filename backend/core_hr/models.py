@@ -8,7 +8,7 @@ new columns (keka_id, display_name, etc.) require a follow-up migration.
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from typing import TYPE_CHECKING, Optional
 
 import sqlalchemy as sa
@@ -50,18 +50,18 @@ class Location(Base):
     city: Mapped[Optional[str]] = mapped_column(sa.String(100))
     state: Mapped[Optional[str]] = mapped_column(sa.String(100))
     pincode: Mapped[Optional[str]] = mapped_column(sa.String(10))
-    country: Mapped[str] = mapped_column(sa.String(100), server_default="India")
+    country: Mapped[str] = mapped_column(sa.String(100), default="India")
     timezone: Mapped[str] = mapped_column(
-        sa.String(50), server_default="Asia/Kolkata",
+        sa.String(50), default="Asia/Kolkata",
     )
     is_active: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("TRUE"),
+        sa.Boolean, default=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now(),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now(),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
 
     # ── Relationships ───────────────────────────────────────────────
@@ -109,13 +109,13 @@ class Department(Base):
         UUID(as_uuid=True), sa.ForeignKey("locations.id"),
     )
     is_active: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("TRUE"),
+        sa.Boolean, default=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now(),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now(),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
 
     # ── Relationships ───────────────────────────────────────────────
@@ -190,7 +190,7 @@ class Employee(Base):
         sa.Enum(MaritalStatus, name="marital_status", create_type=False),
     )
     nationality: Mapped[str] = mapped_column(
-        sa.String(50), server_default="Indian",
+        sa.String(50), default="Indian",
     )
 
     # ── Address / Emergency ─────────────────────────────────────────
@@ -217,7 +217,7 @@ class Employee(Base):
     # ── Employment lifecycle ────────────────────────────────────────
     employment_status: Mapped[EmploymentStatus] = mapped_column(
         sa.Enum(EmploymentStatus, name="employment_status", create_type=False),
-        server_default="active",
+        default="active",
     )
     date_of_joining: Mapped[date] = mapped_column(sa.Date, nullable=False)
     date_of_confirmation: Mapped[Optional[date]] = mapped_column(sa.Date)
@@ -227,7 +227,7 @@ class Employee(Base):
     date_of_exit: Mapped[Optional[date]] = mapped_column(sa.Date)
     exit_reason: Mapped[Optional[str]] = mapped_column(sa.Text)
     notice_period_days: Mapped[int] = mapped_column(
-        sa.Integer, server_default=sa.text("90"),
+        sa.Integer, default=90,
     )
 
     # ── Profile ─────────────────────────────────────────────────────
@@ -241,13 +241,13 @@ class Employee(Base):
 
     # ── Status / Timestamps ─────────────────────────────────────────
     is_active: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("TRUE"),
+        sa.Boolean, default=True,
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now(),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now(),
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
     )
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True),

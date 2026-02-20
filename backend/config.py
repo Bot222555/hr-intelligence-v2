@@ -21,8 +21,8 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "https://hr.cfai.in/auth/callback"
 
-    # Auth
-    JWT_SECRET: str = "dev-secret-change-in-production"
+    # Auth — JWT_SECRET MUST be set via environment / .env (no default)
+    JWT_SECRET: str
     JWT_ALGORITHM: str = "HS256"
     JWT_EXPIRY_HOURS: int = 24
     ALLOWED_DOMAIN: str = "creativefuel.io"

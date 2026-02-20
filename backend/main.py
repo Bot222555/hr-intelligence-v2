@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.attendance.router import router as attendance_router
 from backend.auth.router import router as auth_router
 from backend.common.exceptions import register_exception_handlers
 from backend.config import settings
@@ -13,6 +14,7 @@ from backend.core_hr.router import (
     employees_router,
     locations_router,
 )
+from backend.leave.router import router as leave_router
 from backend.notifications.router import router as notifications_router
 
 
@@ -65,8 +67,8 @@ def create_app() -> FastAPI:
     app.include_router(employees_router, prefix="/api/v1/employees", tags=["employees"])
     app.include_router(departments_router, prefix="/api/v1/departments", tags=["departments"])
     app.include_router(locations_router, prefix="/api/v1/locations", tags=["locations"])
-    # TODO: app.include_router(attendance_router, prefix="/api/v1/attendance", tags=["attendance"])
-    # TODO: app.include_router(leave_router, prefix="/api/v1/leave", tags=["leave"])
+    app.include_router(attendance_router, prefix="/api/v1/attendance", tags=["attendance"])
+    app.include_router(leave_router, prefix="/api/v1/leave", tags=["leave"])
     # TODO: app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
     app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
 

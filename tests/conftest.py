@@ -6,6 +6,11 @@ Uses SQLite + aiosqlite for fast isolated tests without PostgreSQL.
 
 from __future__ import annotations
 
+import os
+
+# Set test JWT_SECRET before any other import touches pydantic-settings
+os.environ.setdefault("JWT_SECRET", "test-secret-for-ci-do-not-use-in-production")
+
 import hashlib
 import uuid
 from datetime import date, datetime, timedelta, timezone

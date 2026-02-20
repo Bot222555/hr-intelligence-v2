@@ -6,7 +6,7 @@ Note: AuditTrail is defined in backend.common.audit to avoid duplication.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import sqlalchemy as sa
@@ -23,7 +23,7 @@ class AppSetting(Base):
     value: Mapped[dict] = mapped_column(JSONB, nullable=False)
     description: Mapped[Optional[str]] = mapped_column(sa.Text)
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("employees.id")

@@ -36,12 +36,12 @@ class AuditMixin:
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=sa.func.now(),
+        default=lambda: datetime.now(timezone.utc),
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=sa.func.now(),
+        default=lambda: datetime.now(timezone.utc),
         onupdate=lambda: datetime.now(timezone.utc),
     )
     created_by: Mapped[Optional[uuid.UUID]] = mapped_column(
@@ -85,7 +85,7 @@ class AuditTrail(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        server_default=sa.func.now(),
+        default=lambda: datetime.now(timezone.utc),
     )
 
     __table_args__ = (

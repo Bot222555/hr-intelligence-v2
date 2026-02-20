@@ -4,7 +4,7 @@ HolidayCalendar, Holiday, AttendanceRecord, ClockEntry, AttendanceRegularization
 from __future__ import annotations
 
 import uuid
-from datetime import date, datetime, time
+from datetime import date, datetime, time, timezone
 from typing import Optional
 
 import sqlalchemy as sa
@@ -31,23 +31,23 @@ class ShiftPolicy(Base):
     start_time: Mapped[time] = mapped_column(sa.Time, nullable=False)
     end_time: Mapped[time] = mapped_column(sa.Time, nullable=False)
     grace_minutes: Mapped[int] = mapped_column(
-        sa.Integer, server_default=sa.text("15")
+        sa.Integer, default=15
     )
     half_day_minutes: Mapped[int] = mapped_column(
-        sa.Integer, server_default=sa.text("240")
+        sa.Integer, default=240
     )
     full_day_minutes: Mapped[int] = mapped_column(
-        sa.Integer, server_default=sa.text("480")
+        sa.Integer, default=480
     )
     is_night_shift: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("FALSE")
+        sa.Boolean, default=False
     )
-    is_active: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("TRUE"))
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -69,9 +69,9 @@ class WeeklyOffPolicy(Base):
     )
     name: Mapped[str] = mapped_column(sa.String(100), unique=True, nullable=False)
     days: Mapped[dict] = mapped_column(JSONB, nullable=False)
-    is_active: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("TRUE"))
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -102,7 +102,7 @@ class EmployeeShiftAssignment(Base):
     effective_from: Mapped[date] = mapped_column(sa.Date, nullable=False)
     effective_to: Mapped[Optional[date]] = mapped_column(sa.Date)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -135,9 +135,9 @@ class HolidayCalendar(Base):
     location_id: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("locations.id")
     )
-    is_active: Mapped[bool] = mapped_column(sa.Boolean, server_default=sa.text("TRUE"))
+    is_active: Mapped[bool] = mapped_column(sa.Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -166,13 +166,13 @@ class Holiday(Base):
     name: Mapped[str] = mapped_column(sa.String(150), nullable=False)
     date: Mapped[date] = mapped_column(sa.Date, nullable=False)
     is_optional: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("FALSE")
+        sa.Boolean, default=False
     )
     is_restricted: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("FALSE")
+        sa.Boolean, default=False
     )
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -197,7 +197,7 @@ class AttendanceRecord(Base):
     status: Mapped[AttendanceStatus] = mapped_column(
         sa.Enum(AttendanceStatus, name="attendance_status", create_type=False),
         nullable=False,
-        server_default="absent",
+        default="absent",
     )
     arrival_status: Mapped[Optional[ArrivalStatus]] = mapped_column(
         sa.Enum(ArrivalStatus, name="arrival_status", create_type=False)
@@ -214,18 +214,18 @@ class AttendanceRecord(Base):
     total_work_minutes: Mapped[Optional[int]] = mapped_column(sa.Integer)
     effective_work_minutes: Mapped[Optional[int]] = mapped_column(sa.Integer)
     overtime_minutes: Mapped[int] = mapped_column(
-        sa.Integer, server_default=sa.text("0")
+        sa.Integer, default=0
     )
     is_regularized: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("FALSE")
+        sa.Boolean, default=False
     )
-    source: Mapped[str] = mapped_column(sa.String(50), server_default="system")
+    source: Mapped[str] = mapped_column(sa.String(50), default="system")
     remarks: Mapped[Optional[str]] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -263,10 +263,10 @@ class ClockEntry(Base):
         sa.DateTime(timezone=True)
     )
     duration_minutes: Mapped[Optional[int]] = mapped_column(sa.Integer)
-    source: Mapped[str] = mapped_column(sa.String(50), server_default="biometric")
+    source: Mapped[str] = mapped_column(sa.String(50), default="biometric")
     ip_address: Mapped[Optional[str]] = mapped_column(INET)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
@@ -301,7 +301,7 @@ class AttendanceRegularization(Base):
         sa.Enum(
             RegularizationStatus, name="regularization_status", create_type=False
         ),
-        server_default="pending",
+        default="pending",
     )
     reviewed_by: Mapped[Optional[uuid.UUID]] = mapped_column(
         UUID(as_uuid=True), sa.ForeignKey("employees.id")
@@ -311,10 +311,10 @@ class AttendanceRegularization(Base):
     )
     reviewer_remarks: Mapped[Optional[str]] = mapped_column(sa.Text)
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     updated_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.func.now()
+        sa.DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
 
     # Relationships
