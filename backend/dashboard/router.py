@@ -1,8 +1,8 @@
 """Dashboard router — read-only endpoints for HR dashboard widgets.
 
-All endpoints require authentication. Summary and department data are
-accessible to managers, HR admins, and system admins. Employees can view
-birthdays and their own summary via future extensions.
+All endpoints require authentication. Summary, trend, and leave data are
+accessible to managers, HR admins, and system admins. Birthdays are
+visible to all authenticated employees.
 """
 
 from __future__ import annotations
@@ -17,6 +17,8 @@ from backend.dashboard.schemas import (
     AttendanceTrendResponse,
     DashboardSummaryResponse,
     DepartmentHeadcountResponse,
+    LeaveSummaryResponse,
+    NewJoinersResponse,
     RecentActivitiesResponse,
     UpcomingBirthdaysResponse,
 )
@@ -35,7 +37,8 @@ async def dashboard_summary(
     ),
     db: AsyncSession = Depends(get_db),
 ):
-    """Dashboard KPI summary: employee count, present today, on leave, pending approvals."""
+    """Dashboard KPI summary: employee count, present today, on leave,
+    pending leave requests, department breakdown."""
     return await DashboardService.get_summary(db)
 
 
@@ -43,17 +46,56 @@ async def dashboard_summary(
 
 @router.get("/attendance-trend", response_model=AttendanceTrendResponse)
 async def attendance_trend(
-    days: int = Query(7, ge=7, le=90, description="Trend period: 7 or 30 days"),
+    days: int = Query(30, ge=7, le=90, description="Trend period in days (default 30)"),
     employee: Employee = Depends(
         require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
     ),
     db: AsyncSession = Depends(get_db),
 ):
-    """Attendance trend chart data for the last N days (default 7)."""
+    """Daily attendance count for the last N days (default 30)."""
     return await DashboardService.get_attendance_trend(db, period_days=days)
 
 
-# ── GET /department-headcount ───────────────────────────────────────
+# ── GET /leave-summary ─────────────────────────────────────────────
+
+@router.get("/leave-summary", response_model=LeaveSummaryResponse)
+async def leave_summary(
+    employee: Employee = Depends(
+        require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    """Leave type breakdown (sick, casual, earned, etc.) for the current month."""
+    return await DashboardService.get_leave_summary(db)
+
+
+# ── GET /birthdays ──────────────────────────────────────────────────
+
+@router.get("/birthdays", response_model=UpcomingBirthdaysResponse)
+async def upcoming_birthdays(
+    days: int = Query(7, ge=1, le=90, description="Lookahead window in days (default 7)"),
+    employee: Employee = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Upcoming employee birthdays within the next N days (default 7)."""
+    return await DashboardService.get_upcoming_birthdays(db, days_ahead=days)
+
+
+# ── GET /new-joiners ────────────────────────────────────────────────
+
+@router.get("/new-joiners", response_model=NewJoinersResponse)
+async def new_joiners(
+    days: int = Query(30, ge=1, le=90, description="Lookback window in days (default 30)"),
+    employee: Employee = Depends(
+        require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    """Employees who joined in the last N days (default 30)."""
+    return await DashboardService.get_new_joiners(db, days=days)
+
+
+# ── GET /department-headcount (backward compat) ─────────────────────
 
 @router.get("/department-headcount", response_model=DepartmentHeadcountResponse)
 async def department_headcount(
@@ -66,19 +108,7 @@ async def department_headcount(
     return await DashboardService.get_department_headcount(db)
 
 
-# ── GET /upcoming-birthdays ─────────────────────────────────────────
-
-@router.get("/upcoming-birthdays", response_model=UpcomingBirthdaysResponse)
-async def upcoming_birthdays(
-    days: int = Query(30, ge=1, le=90, description="Lookahead window in days"),
-    employee: Employee = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Upcoming employee birthdays within the next N days."""
-    return await DashboardService.get_upcoming_birthdays(db, days_ahead=days)
-
-
-# ── GET /recent-activities ──────────────────────────────────────────
+# ── GET /recent-activities (backward compat) ────────────────────────
 
 @router.get("/recent-activities", response_model=RecentActivitiesResponse)
 async def recent_activities(

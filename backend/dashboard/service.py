@@ -8,14 +8,15 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Optional
 
+import sqlalchemy as sa
 from sqlalchemy import and_, case, distinct, extract, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from backend.attendance.models import AttendanceRecord, AttendanceRegularization
-from backend.common.audit import AuditTrail
 from backend.common.constants import (
     AttendanceStatus,
     EmploymentStatus,
@@ -28,14 +29,19 @@ from backend.dashboard.schemas import (
     AttendanceTrendPoint,
     AttendanceTrendResponse,
     DashboardSummaryResponse,
+    DepartmentBreakdownItem,
     DepartmentHeadcountItem,
     DepartmentHeadcountResponse,
+    LeaveSummaryResponse,
+    LeaveTypeSummaryItem,
+    NewJoinerItem,
+    NewJoinersResponse,
     RecentActivitiesResponse,
     RecentActivityItem,
     UpcomingBirthdayItem,
     UpcomingBirthdaysResponse,
 )
-from backend.leave.models import LeaveRequest
+from backend.leave.models import LeaveRequest, LeaveType
 
 
 def _today() -> date:
@@ -54,9 +60,16 @@ class DashboardService:
 
     @staticmethod
     async def get_summary(db: AsyncSession) -> DashboardSummaryResponse:
-        """Return top-level KPI metrics for the dashboard."""
+        """Return top-level KPI metrics for the dashboard.
+
+        Returns:
+            - total_employees: count of active employees
+            - present_today: attendance records with checked-in status today
+            - on_leave_today: approved leave requests covering today
+            - pending_leave_requests: leave requests with status=pending
+            - department_breakdown: employee count per department
+        """
         today = _today()
-        month_start = today.replace(day=1)
 
         # Total active employees
         total_q = select(func.count(Employee.id)).where(
@@ -64,7 +77,7 @@ class DashboardService:
             Employee.employment_status == EmploymentStatus.active,
         )
 
-        # Present today (present, work_from_home, half_day, on_duty)
+        # Present today (checked-in statuses: present, work_from_home, half_day, on_duty)
         present_statuses = [
             AttendanceStatus.present,
             AttendanceStatus.work_from_home,
@@ -76,56 +89,60 @@ class DashboardService:
             AttendanceRecord.status.in_(present_statuses),
         )
 
-        # On leave today
-        on_leave_q = select(func.count(AttendanceRecord.id)).where(
-            AttendanceRecord.date == today,
-            AttendanceRecord.status == AttendanceStatus.on_leave,
+        # On leave today — from approved leave requests where today is in range
+        on_leave_q = select(func.count(distinct(LeaveRequest.employee_id))).where(
+            LeaveRequest.status == LeaveStatus.approved,
+            LeaveRequest.start_date <= today,
+            LeaveRequest.end_date >= today,
         )
 
-        # Pending leave approvals
+        # Pending leave requests
         pending_leave_q = select(func.count(LeaveRequest.id)).where(
             LeaveRequest.status == LeaveStatus.pending,
         )
 
-        # Pending attendance regularizations
-        pending_reg_q = select(func.count(AttendanceRegularization.id)).where(
-            AttendanceRegularization.status == RegularizationStatus.pending,
-        )
-
-        # New joiners this month
-        joiners_q = select(func.count(Employee.id)).where(
-            Employee.is_active.is_(True),
-            Employee.date_of_joining >= month_start,
-            Employee.date_of_joining <= today,
-        )
-
-        # Attrition this month
-        attrition_q = select(func.count(Employee.id)).where(
-            or_(
-                and_(
-                    Employee.last_working_date >= month_start,
-                    Employee.last_working_date <= today,
-                ),
-                and_(
-                    Employee.date_of_exit >= month_start,
-                    Employee.date_of_exit <= today,
-                ),
-            ),
-        )
-
-        # Execute all counts in parallel-ish (single round-trip each)
+        # Execute scalar queries
         results = await _multi_scalar(
             db, total_q, present_q, on_leave_q, pending_leave_q,
-            pending_reg_q, joiners_q, attrition_q,
         )
+
+        # Department breakdown — active employees per department
+        dept_q = (
+            select(
+                Department.id.label("department_id"),
+                Department.name.label("department_name"),
+                func.count(Employee.id).label("count"),
+            )
+            .outerjoin(
+                Employee,
+                and_(
+                    Employee.department_id == Department.id,
+                    Employee.is_active.is_(True),
+                    Employee.employment_status == EmploymentStatus.active,
+                ),
+            )
+            .where(Department.is_active.is_(True))
+            .group_by(Department.id, Department.name)
+            .order_by(Department.name)
+        )
+        dept_result = await db.execute(dept_q)
+        dept_rows = dept_result.all()
+
+        department_breakdown = [
+            DepartmentBreakdownItem(
+                department_id=row.department_id,
+                department_name=row.department_name,
+                count=row.count,
+            )
+            for row in dept_rows
+        ]
 
         return DashboardSummaryResponse(
             total_employees=results[0] or 0,
             present_today=results[1] or 0,
             on_leave_today=results[2] or 0,
-            pending_approvals=(results[3] or 0) + (results[4] or 0),
-            new_joiners_this_month=results[5] or 0,
-            attrition_this_month=results[6] or 0,
+            pending_leave_requests=results[3] or 0,
+            department_breakdown=department_breakdown,
         )
 
     # ═════════════════════════════════════════════════════════════════
@@ -135,7 +152,7 @@ class DashboardService:
     @staticmethod
     async def get_attendance_trend(
         db: AsyncSession,
-        period_days: int = 7,
+        period_days: int = 30,
     ) -> AttendanceTrendResponse:
         """Return daily attendance breakdown for the last N days."""
         today = _today()
@@ -209,7 +226,9 @@ class DashboardService:
         days_with_data = [p for p in data if (p.present + p.absent + p.on_leave) > 0]
         num_days = len(days_with_data) or 1
 
-        total_present = sum(p.present + p.work_from_home + p.half_day for p in days_with_data)
+        total_present = sum(
+            p.present + p.work_from_home + p.half_day for p in days_with_data
+        )
         total_absent = sum(p.absent for p in days_with_data)
         total_on_leave = sum(p.on_leave for p in days_with_data)
         total_headcount = total_present + total_absent + total_on_leave
@@ -234,7 +253,219 @@ class DashboardService:
         )
 
     # ═════════════════════════════════════════════════════════════════
-    # GET /department-headcount
+    # GET /leave-summary
+    # ═════════════════════════════════════════════════════════════════
+
+    @staticmethod
+    async def get_leave_summary(db: AsyncSession) -> LeaveSummaryResponse:
+        """Return leave type breakdown (sick, casual, earned, etc.) for current month.
+
+        Counts approved + pending leave requests whose date range overlaps
+        the current calendar month.
+        """
+        today = _today()
+        month_start = today.replace(day=1)
+        # Last day of current month
+        if today.month == 12:
+            month_end = date(today.year + 1, 1, 1) - timedelta(days=1)
+        else:
+            month_end = date(today.year, today.month + 1, 1) - timedelta(days=1)
+
+        stmt = (
+            select(
+                LeaveType.id.label("leave_type_id"),
+                LeaveType.code.label("leave_type_code"),
+                LeaveType.name.label("leave_type_name"),
+                func.count(LeaveRequest.id).label("request_count"),
+                func.coalesce(func.sum(LeaveRequest.total_days), 0).label(
+                    "total_days"
+                ),
+            )
+            .outerjoin(
+                LeaveRequest,
+                and_(
+                    LeaveRequest.leave_type_id == LeaveType.id,
+                    LeaveRequest.status.in_(
+                        [LeaveStatus.approved, LeaveStatus.pending]
+                    ),
+                    LeaveRequest.start_date <= month_end,
+                    LeaveRequest.end_date >= month_start,
+                ),
+            )
+            .where(LeaveType.is_active.is_(True))
+            .group_by(LeaveType.id, LeaveType.code, LeaveType.name)
+            .order_by(LeaveType.name)
+        )
+
+        result = await db.execute(stmt)
+        rows = result.all()
+
+        by_type = []
+        grand_requests = 0
+        grand_days = Decimal("0")
+
+        for row in rows:
+            item = LeaveTypeSummaryItem(
+                leave_type_id=row.leave_type_id,
+                leave_type_code=row.leave_type_code,
+                leave_type_name=row.leave_type_name,
+                request_count=row.request_count,
+                total_days=row.total_days,
+            )
+            by_type.append(item)
+            grand_requests += row.request_count
+            grand_days += Decimal(str(row.total_days))
+
+        return LeaveSummaryResponse(
+            month=today.month,
+            year=today.year,
+            total_requests=grand_requests,
+            total_days=grand_days,
+            by_type=by_type,
+        )
+
+    # ═════════════════════════════════════════════════════════════════
+    # GET /birthdays
+    # ═════════════════════════════════════════════════════════════════
+
+    @staticmethod
+    async def get_upcoming_birthdays(
+        db: AsyncSession,
+        days_ahead: int = 7,
+    ) -> UpcomingBirthdaysResponse:
+        """Return employees with birthdays in the next N days.
+
+        Uses month/day comparison to handle year-end wraparound.
+        For SQLite compat (tests), we load all employees with DOB and
+        filter in Python. For production (PostgreSQL), this is still
+        efficient given typical company sizes (< 10k employees).
+        """
+        today = _today()
+        end_date = today + timedelta(days=days_ahead)
+
+        # Load active employees with DOB set
+        stmt = (
+            select(
+                Employee.id.label("employee_id"),
+                Employee.employee_code,
+                Employee.display_name,
+                Employee.date_of_birth,
+                Employee.profile_photo_url,
+                Department.name.label("department_name"),
+            )
+            .outerjoin(Department, Employee.department_id == Department.id)
+            .where(
+                Employee.is_active.is_(True),
+                Employee.employment_status == EmploymentStatus.active,
+                Employee.date_of_birth.isnot(None),
+            )
+        )
+
+        result = await db.execute(stmt)
+        rows = result.all()
+
+        items: list[UpcomingBirthdayItem] = []
+        for row in rows:
+            dob = row.date_of_birth
+            # Compute next birthday
+            try:
+                birthday_this_year = dob.replace(year=today.year)
+            except ValueError:
+                # Feb 29 in a non-leap year → use Feb 28
+                birthday_this_year = date(today.year, 2, 28)
+
+            if birthday_this_year < today:
+                try:
+                    birthday_next_year = dob.replace(year=today.year + 1)
+                except ValueError:
+                    birthday_next_year = date(today.year + 1, 2, 28)
+                next_birthday = birthday_next_year
+            else:
+                next_birthday = birthday_this_year
+
+            if today <= next_birthday <= end_date:
+                items.append(
+                    UpcomingBirthdayItem(
+                        employee_id=row.employee_id,
+                        employee_code=row.employee_code,
+                        display_name=row.display_name,
+                        department_name=row.department_name,
+                        date_of_birth=row.date_of_birth,
+                        birthday_date=next_birthday,
+                        days_away=(next_birthday - today).days,
+                        profile_photo_url=row.profile_photo_url,
+                    )
+                )
+
+        # Sort by days_away
+        items.sort(key=lambda x: x.days_away)
+
+        return UpcomingBirthdaysResponse(
+            days_ahead=days_ahead,
+            data=items,
+        )
+
+    # ═════════════════════════════════════════════════════════════════
+    # GET /new-joiners
+    # ═════════════════════════════════════════════════════════════════
+
+    @staticmethod
+    async def get_new_joiners(
+        db: AsyncSession,
+        days: int = 30,
+    ) -> NewJoinersResponse:
+        """Return employees who joined in the last N days."""
+        today = _today()
+        since = today - timedelta(days=days)
+
+        stmt = (
+            select(
+                Employee.id.label("employee_id"),
+                Employee.employee_code,
+                Employee.first_name,
+                Employee.last_name,
+                Employee.display_name,
+                Employee.job_title,
+                Employee.date_of_joining,
+                Employee.profile_photo_url,
+                Department.name.label("department_name"),
+            )
+            .outerjoin(Department, Employee.department_id == Department.id)
+            .where(
+                Employee.is_active.is_(True),
+                Employee.employment_status == EmploymentStatus.active,
+                Employee.date_of_joining >= since,
+                Employee.date_of_joining <= today,
+            )
+            .order_by(Employee.date_of_joining.desc())
+        )
+
+        result = await db.execute(stmt)
+        rows = result.all()
+
+        items = [
+            NewJoinerItem(
+                employee_id=row.employee_id,
+                employee_code=row.employee_code,
+                first_name=row.first_name,
+                last_name=row.last_name,
+                display_name=row.display_name,
+                department_name=row.department_name,
+                job_title=row.job_title,
+                date_of_joining=row.date_of_joining,
+                profile_photo_url=row.profile_photo_url,
+            )
+            for row in rows
+        ]
+
+        return NewJoinersResponse(
+            days=days,
+            count=len(items),
+            data=items,
+        )
+
+    # ═════════════════════════════════════════════════════════════════
+    # GET /department-headcount  (kept for backward compat)
     # ═════════════════════════════════════════════════════════════════
 
     @staticmethod
@@ -244,18 +475,20 @@ class DashboardService:
         """Return headcount per department with today's attendance snapshot."""
         today = _today()
 
-        # Headcount per department (active employees only)
         headcount_stmt = (
             select(
                 Department.id.label("department_id"),
                 Department.name.label("department_name"),
                 func.count(Employee.id).label("headcount"),
             )
-            .outerjoin(Employee, and_(
-                Employee.department_id == Department.id,
-                Employee.is_active.is_(True),
-                Employee.employment_status == EmploymentStatus.active,
-            ))
+            .outerjoin(
+                Employee,
+                and_(
+                    Employee.department_id == Department.id,
+                    Employee.is_active.is_(True),
+                    Employee.employment_status == EmploymentStatus.active,
+                ),
+            )
             .where(Department.is_active.is_(True))
             .group_by(Department.id, Department.name)
             .order_by(Department.name)
@@ -264,7 +497,6 @@ class DashboardService:
         headcount_result = await db.execute(headcount_stmt)
         headcount_rows = headcount_result.all()
 
-        # Today's attendance per department
         present_statuses = [
             AttendanceStatus.present,
             AttendanceStatus.work_from_home,
@@ -279,7 +511,9 @@ class DashboardService:
                     case((AttendanceRecord.status.in_(present_statuses), 1))
                 ).label("present_today"),
                 func.count(
-                    case((AttendanceRecord.status == AttendanceStatus.on_leave, 1))
+                    case(
+                        (AttendanceRecord.status == AttendanceStatus.on_leave, 1)
+                    )
                 ).label("on_leave_today"),
             )
             .join(Employee, AttendanceRecord.employee_id == Employee.id)
@@ -297,13 +531,15 @@ class DashboardService:
         items: list[DepartmentHeadcountItem] = []
         for row in headcount_rows:
             att = att_map.get(row.department_id)
-            items.append(DepartmentHeadcountItem(
-                department_id=row.department_id,
-                department_name=row.department_name,
-                headcount=row.headcount,
-                present_today=att.present_today if att else 0,
-                on_leave_today=att.on_leave_today if att else 0,
-            ))
+            items.append(
+                DepartmentHeadcountItem(
+                    department_id=row.department_id,
+                    department_name=row.department_name,
+                    headcount=row.headcount,
+                    present_today=att.present_today if att else 0,
+                    on_leave_today=att.on_leave_today if att else 0,
+                )
+            )
 
         return DepartmentHeadcountResponse(
             total_departments=len(items),
@@ -311,90 +547,7 @@ class DashboardService:
         )
 
     # ═════════════════════════════════════════════════════════════════
-    # GET /upcoming-birthdays
-    # ═════════════════════════════════════════════════════════════════
-
-    @staticmethod
-    async def get_upcoming_birthdays(
-        db: AsyncSession,
-        days_ahead: int = 30,
-    ) -> UpcomingBirthdaysResponse:
-        """Return employees with birthdays in the next N days.
-
-        Uses PostgreSQL date arithmetic to find birthdays regardless of
-        birth year — compares (month, day) against today + N days window.
-        """
-        today = _today()
-        end_date = today + timedelta(days=days_ahead)
-
-        # Build a query that computes each employee's next birthday this year/next year
-        # and filters to those within the window.
-        # We use a raw-ish approach with extract() for cross-year handling.
-
-        # Birthday this year
-        birthday_this_year = func.make_date(
-            today.year,
-            extract("month", Employee.date_of_birth).cast(sa_int()),
-            extract("day", Employee.date_of_birth).cast(sa_int()),
-        )
-
-        # Birthday next year (for Dec→Jan wraparound)
-        birthday_next_year = func.make_date(
-            today.year + 1,
-            extract("month", Employee.date_of_birth).cast(sa_int()),
-            extract("day", Employee.date_of_birth).cast(sa_int()),
-        )
-
-        # Pick whichever is the upcoming one
-        next_birthday = case(
-            (birthday_this_year >= today, birthday_this_year),
-            else_=birthday_next_year,
-        )
-
-        stmt = (
-            select(
-                Employee.id.label("employee_id"),
-                Employee.employee_code,
-                Employee.display_name,
-                Employee.date_of_birth,
-                Employee.profile_photo_url,
-                Department.name.label("department_name"),
-                next_birthday.label("birthday_date"),
-            )
-            .outerjoin(Department, Employee.department_id == Department.id)
-            .where(
-                Employee.is_active.is_(True),
-                Employee.employment_status == EmploymentStatus.active,
-                Employee.date_of_birth.isnot(None),
-                next_birthday >= today,
-                next_birthday <= end_date,
-            )
-            .order_by(next_birthday)
-        )
-
-        result = await db.execute(stmt)
-        rows = result.all()
-
-        items: list[UpcomingBirthdayItem] = []
-        for row in rows:
-            items.append(UpcomingBirthdayItem(
-                employee_id=row.employee_id,
-                employee_code=row.employee_code,
-                display_name=row.display_name,
-                department_name=row.department_name,
-                date_of_birth=row.date_of_birth,
-                birthday_date=row.birthday_date,
-                days_away=(row.birthday_date - today).days,
-                profile_photo_url=row.profile_photo_url,
-            ))
-
-        return UpcomingBirthdaysResponse(
-            days_ahead=days_ahead,
-            data=items,
-        )
-
-    # ═════════════════════════════════════════════════════════════════
-    # GET /recent-activities
+    # GET /recent-activities  (kept for backward compat)
     # ═════════════════════════════════════════════════════════════════
 
     @staticmethod
@@ -402,9 +555,9 @@ class DashboardService:
         db: AsyncSession,
         limit: int = 20,
     ) -> RecentActivitiesResponse:
-        """Return the most recent audit trail entries with human-readable descriptions."""
+        """Return the most recent audit trail entries."""
+        from backend.common.audit import AuditTrail
 
-        # Alias for the actor employee
         Actor = aliased(Employee, flat=True)
 
         stmt = (
@@ -429,47 +582,35 @@ class DashboardService:
 
         items: list[RecentActivityItem] = []
         for row in rows:
-            actor_name = (
-                row.actor_name
-                or (
-                    f"{row.actor_first_name} {row.actor_last_name}".strip()
-                    if row.actor_first_name
-                    else None
-                )
+            actor_name = row.actor_name or (
+                f"{row.actor_first_name} {row.actor_last_name}".strip()
+                if row.actor_first_name
+                else None
             )
             description = _build_activity_description(
                 action=row.action,
                 entity_type=row.entity_type,
                 actor_name=actor_name,
             )
-            items.append(RecentActivityItem(
-                id=row.id,
-                action=row.action,
-                entity_type=row.entity_type,
-                entity_id=row.entity_id,
-                actor_id=row.actor_id,
-                actor_name=actor_name,
-                description=description,
-                created_at=row.created_at,
-            ))
+            items.append(
+                RecentActivityItem(
+                    id=row.id,
+                    action=row.action,
+                    entity_type=row.entity_type,
+                    entity_id=row.entity_id,
+                    actor_id=row.actor_id,
+                    actor_name=actor_name,
+                    description=description,
+                    created_at=row.created_at,
+                )
+            )
 
-        return RecentActivitiesResponse(
-            limit=limit,
-            data=items,
-        )
+        return RecentActivitiesResponse(limit=limit, data=items)
 
 
 # ═════════════════════════════════════════════════════════════════════
 # Helpers
 # ═════════════════════════════════════════════════════════════════════
-
-
-import sqlalchemy as sa
-
-
-def sa_int():
-    """Shorthand for sa.Integer for cast expressions."""
-    return sa.Integer
 
 
 async def _multi_scalar(db: AsyncSession, *stmts) -> list:
@@ -531,6 +672,5 @@ def _build_activity_description(
     if verb:
         return f"{actor} {verb}"
 
-    # Fallback: generic description
     entity_label = entity_type.replace("_", " ")
     return f"{actor} performed '{action}' on {entity_label}"

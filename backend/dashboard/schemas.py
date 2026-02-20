@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from decimal import Decimal
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -14,20 +15,28 @@ from pydantic import BaseModel, ConfigDict, Field
 # ═════════════════════════════════════════════════════════════════════
 
 
+class DepartmentBreakdownItem(BaseModel):
+    """Employee count for a single department."""
+
+    department_id: uuid.UUID
+    department_name: str
+    count: int = 0
+
+
 class DashboardSummaryResponse(BaseModel):
     """Top-level KPI cards for the HR dashboard."""
 
     total_employees: int = Field(..., description="Active employees count")
-    present_today: int = Field(..., description="Employees present today")
-    on_leave_today: int = Field(..., description="Employees on leave today")
-    pending_approvals: int = Field(
-        ..., description="Leave requests + regularizations pending review"
+    present_today: int = Field(..., description="Employees checked-in today")
+    on_leave_today: int = Field(
+        ..., description="Employees on approved leave today"
     )
-    new_joiners_this_month: int = Field(
-        ..., description="Employees who joined this calendar month"
+    pending_leave_requests: int = Field(
+        ..., description="Leave requests with status=pending"
     )
-    attrition_this_month: int = Field(
-        ..., description="Employees who exited this calendar month"
+    department_breakdown: list[DepartmentBreakdownItem] = Field(
+        default_factory=list,
+        description="Active employee count per department",
     )
 
 
@@ -47,16 +56,6 @@ class AttendanceTrendPoint(BaseModel):
     half_day: int = 0
 
 
-class AttendanceTrendResponse(BaseModel):
-    """Attendance trend over a configurable period (7 / 30 days)."""
-
-    period_days: int = Field(..., description="Number of days in the trend window")
-    start_date: date
-    end_date: date
-    data: list[AttendanceTrendPoint]
-    averages: AttendanceTrendAverages
-
-
 class AttendanceTrendAverages(BaseModel):
     """Period averages for the attendance trend."""
 
@@ -68,30 +67,43 @@ class AttendanceTrendAverages(BaseModel):
     )
 
 
-# ═════════════════════════════════════════════════════════════════════
-# GET /department-headcount
-# ═════════════════════════════════════════════════════════════════════
+class AttendanceTrendResponse(BaseModel):
+    """Attendance trend over a configurable period (default 30 days)."""
 
-
-class DepartmentHeadcountItem(BaseModel):
-    """Headcount for a single department."""
-
-    department_id: uuid.UUID
-    department_name: str
-    headcount: int = 0
-    present_today: int = 0
-    on_leave_today: int = 0
-
-
-class DepartmentHeadcountResponse(BaseModel):
-    """Headcount breakdown by department."""
-
-    total_departments: int
-    data: list[DepartmentHeadcountItem]
+    period_days: int = Field(..., description="Number of days in the trend window")
+    start_date: date
+    end_date: date
+    data: list[AttendanceTrendPoint]
+    averages: AttendanceTrendAverages
 
 
 # ═════════════════════════════════════════════════════════════════════
-# GET /upcoming-birthdays
+# GET /leave-summary
+# ═════════════════════════════════════════════════════════════════════
+
+
+class LeaveTypeSummaryItem(BaseModel):
+    """Leave count/days for a single leave type in the current month."""
+
+    leave_type_id: uuid.UUID
+    leave_type_code: str
+    leave_type_name: str
+    request_count: int = 0
+    total_days: Decimal = Decimal("0")
+
+
+class LeaveSummaryResponse(BaseModel):
+    """Leave breakdown by type for the current month."""
+
+    month: int = Field(..., description="Month number (1-12)")
+    year: int
+    total_requests: int = 0
+    total_days: Decimal = Decimal("0")
+    by_type: list[LeaveTypeSummaryItem] = Field(default_factory=list)
+
+
+# ═════════════════════════════════════════════════════════════════════
+# GET /birthdays
 # ═════════════════════════════════════════════════════════════════════
 
 
@@ -118,7 +130,58 @@ class UpcomingBirthdaysResponse(BaseModel):
 
 
 # ═════════════════════════════════════════════════════════════════════
-# GET /recent-activities
+# GET /new-joiners
+# ═════════════════════════════════════════════════════════════════════
+
+
+class NewJoinerItem(BaseModel):
+    """An employee who joined recently."""
+
+    model_config = ConfigDict(from_attributes=True)
+
+    employee_id: uuid.UUID
+    employee_code: str
+    first_name: str
+    last_name: str
+    display_name: Optional[str] = None
+    department_name: Optional[str] = None
+    job_title: Optional[str] = None
+    date_of_joining: date
+    profile_photo_url: Optional[str] = None
+
+
+class NewJoinersResponse(BaseModel):
+    """Employees who joined in the last N days."""
+
+    days: int = Field(..., description="Lookback window in days")
+    count: int
+    data: list[NewJoinerItem]
+
+
+# ═════════════════════════════════════════════════════════════════════
+# GET /department-headcount  (kept for backward compat)
+# ═════════════════════════════════════════════════════════════════════
+
+
+class DepartmentHeadcountItem(BaseModel):
+    """Headcount for a single department."""
+
+    department_id: uuid.UUID
+    department_name: str
+    headcount: int = 0
+    present_today: int = 0
+    on_leave_today: int = 0
+
+
+class DepartmentHeadcountResponse(BaseModel):
+    """Headcount breakdown by department."""
+
+    total_departments: int
+    data: list[DepartmentHeadcountItem]
+
+
+# ═════════════════════════════════════════════════════════════════════
+# GET /recent-activities  (kept for backward compat)
 # ═════════════════════════════════════════════════════════════════════
 
 
