@@ -18,8 +18,12 @@ from backend.core_hr.router import (
     employees_router,
     locations_router,
 )
+from backend.expenses.router import router as expenses_router
+from backend.fnf.router import router as fnf_router
+from backend.helpdesk.router import router as helpdesk_router
 from backend.leave.router import router as leave_router
 from backend.notifications.router import router as notifications_router
+from backend.salary.router import router as salary_router
 
 
 @asynccontextmanager
@@ -79,6 +83,10 @@ def create_app() -> FastAPI:
     app.include_router(leave_router, prefix="/api/v1/leave", tags=["leave"])
     app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
     app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
+    app.include_router(salary_router, prefix="/api/v1/salary", tags=["salary"])
+    app.include_router(helpdesk_router, prefix="/api/v1/helpdesk", tags=["helpdesk"])
+    app.include_router(expenses_router, prefix="/api/v1/expenses", tags=["expenses"])
+    app.include_router(fnf_router, prefix="/api/v1/fnf", tags=["fnf"])
 
     return app
 

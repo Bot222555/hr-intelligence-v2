@@ -41,6 +41,10 @@ import backend.leave.models  # noqa: F401
 import backend.attendance.models  # noqa: F401
 import backend.notifications.models  # noqa: F401
 import backend.dashboard.models  # noqa: F401
+import backend.salary.models  # noqa: F401
+import backend.helpdesk.models  # noqa: F401
+import backend.expenses.models  # noqa: F401
+import backend.fnf.models  # noqa: F401
 
 # ── SQLite compat: compile PG-specific types to TEXT/BLOB ───────────
 

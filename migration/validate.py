@@ -62,6 +62,11 @@ def validate() -> Tuple[int, int]:
         ("attendance", "attendance_records"),
         ("leave_balances", "leave_balances"),
         ("leave_requests", "leave_requests"),
+        ("salaries", "salaries"),
+        ("salary_components", "salary_components"),
+        ("helpdesk_tickets", "helpdesk_tickets"),
+        ("expense_claims", "expense_claims"),
+        ("fnf_settlements", "fnf_settlements"),
     ]
 
     for sq_table, pg_table in count_checks:
