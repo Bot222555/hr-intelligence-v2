@@ -5,6 +5,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from backend.auth.router import router as auth_router
+from backend.common.exceptions import register_exception_handlers
 from backend.config import settings
 
 
@@ -31,6 +33,9 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Exception handlers (RFC 7807)
+    register_exception_handlers(app)
+
     # CORS
     app.add_middleware(
         CORSMiddleware,
@@ -50,7 +55,7 @@ def create_app() -> FastAPI:
         }
 
     # Register routers
-    # TODO: app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
+    app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
     # TODO: app.include_router(employees_router, prefix="/api/v1/employees", tags=["employees"])
     # TODO: app.include_router(departments_router, prefix="/api/v1/departments", tags=["departments"])
     # TODO: app.include_router(attendance_router, prefix="/api/v1/attendance", tags=["attendance"])
