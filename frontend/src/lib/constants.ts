@@ -18,7 +18,9 @@ export const ROUTES = {
   SALARY: "/salary",
   HELPDESK: "/helpdesk",
   EXPENSES: "/expenses",
-  SETTINGS: "/settings",
+  SETTINGS: "/admin/settings",
+  ADMIN_ROLES: "/admin/roles",
+  ADMIN_HOLIDAYS: "/admin/holidays",
 } as const;
 
 export const ROLES = {

@@ -1,11 +1,24 @@
-"""FnF Pydantic v2 schemas — request/response validation."""
+"""FnF (Full & Final) Pydantic v2 schemas — request/response validation."""
 
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
+
+
+# ═════════════════════════════════════════════════════════════════════
+# Embedded
+# ═════════════════════════════════════════════════════════════════════
+
+
+class EmployeeBrief(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    employee_code: Optional[str] = None
+    display_name: Optional[str] = None
 
 
 # ═════════════════════════════════════════════════════════════════════
@@ -13,8 +26,8 @@ from pydantic import BaseModel, ConfigDict
 # ═════════════════════════════════════════════════════════════════════
 
 
-class FnFSettlementOut(BaseModel):
-    """Full FnF settlement representation."""
+class FnFOut(BaseModel):
+    """Full & Final settlement representation."""
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -34,8 +47,25 @@ class FnFSettlementOut(BaseModel):
     updated_at: Optional[datetime] = None
 
 
-class FnFSettlementListResponse(BaseModel):
-    data: List[FnFSettlementOut]
+# Keep old aliases for backward compatibility
+FnFSettlementOut = FnFOut
+
+
+class FnFListResponse(BaseModel):
+    data: List[FnFOut]
     total: int
     page: int = 1
     page_size: int = 50
+
+
+# Keep old alias
+FnFSettlementListResponse = FnFListResponse
+
+
+class FnFSummary(BaseModel):
+    """Aggregate FnF statistics."""
+
+    total_settlements: int = 0
+    pending: int = 0
+    completed: int = 0
+    total_net_amount: Decimal = Decimal("0")

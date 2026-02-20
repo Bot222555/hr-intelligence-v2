@@ -15,6 +15,8 @@ import {
   Receipt,
   Network,
   Building2,
+  ShieldCheck,
+  CalendarHeart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -56,6 +58,8 @@ const NAV_ITEMS: NavItemDef[] = [
 
 const ADMIN_ITEMS: NavItemDef[] = [
   { label: "Settings", path: ROUTES.SETTINGS, icon: Settings },
+  { label: "Roles", path: ROUTES.ADMIN_ROLES, icon: ShieldCheck },
+  { label: "Holidays", path: ROUTES.ADMIN_HOLIDAYS, icon: CalendarHeart },
 ];
 
 export function Sidebar({ collapsed, onToggle }: SidebarProps) {

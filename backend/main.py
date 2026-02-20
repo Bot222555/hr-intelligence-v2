@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
+from backend.admin.router import router as admin_router
 from backend.attendance.router import router as attendance_router
 from backend.auth.router import router as auth_router
 from backend.common.exceptions import register_exception_handlers
@@ -21,8 +22,12 @@ from backend.core_hr.router import (
 from backend.expenses.router import router as expenses_router
 from backend.fnf.router import router as fnf_router
 from backend.helpdesk.router import router as helpdesk_router
+from backend.expenses.router import router as expenses_router
+from backend.fnf.router import router as fnf_router
+from backend.helpdesk.router import router as helpdesk_router
 from backend.leave.router import router as leave_router
 from backend.notifications.router import router as notifications_router
+from backend.salary.router import router as salary_router
 from backend.salary.router import router as salary_router
 
 
@@ -75,6 +80,7 @@ def create_app() -> FastAPI:
         }
 
     # Register routers
+    app.include_router(admin_router, prefix="/api/v1/admin", tags=["admin"])
     app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
     app.include_router(employees_router, prefix="/api/v1/employees", tags=["employees"])
     app.include_router(departments_router, prefix="/api/v1/departments", tags=["departments"])

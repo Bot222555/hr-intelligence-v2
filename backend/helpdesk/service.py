@@ -63,7 +63,7 @@ class HelpdeskService:
         result = await db.execute(stmt)
         ticket = result.scalar_one_or_none()
         if not ticket:
-            raise NotFoundException(f"Ticket {ticket_id} not found")
+            raise NotFoundException("HelpdeskTicket", str(ticket_id))
         return ticket
 
     @staticmethod

@@ -46,7 +46,7 @@ class SalaryService:
         result = await db.execute(stmt)
         salary = result.scalar_one_or_none()
         if not salary:
-            raise NotFoundException(f"Salary record not found for employee {employee_id}")
+            raise NotFoundException("Salary", str(employee_id))
         return salary
 
     @staticmethod
@@ -85,7 +85,7 @@ class SalaryService:
         result = await db.execute(stmt)
         salary = result.scalar_one_or_none()
         if not salary:
-            raise NotFoundException(f"Salary record not found for employee {employee_id}")
+            raise NotFoundException("Salary", str(employee_id))
 
         return {
             "employee_id": salary.employee_id,
