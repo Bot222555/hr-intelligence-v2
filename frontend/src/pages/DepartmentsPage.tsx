@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import { getDepartmentsList, type DepartmentDetail } from "@/api/orgchart";
 import { Input } from "@/components/ui/input";
-import { cn } from "@/lib/utils";
+// utils imported as needed
 
 // ── Department Card ────────────────────────────────────────────────
 

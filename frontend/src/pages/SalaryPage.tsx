@@ -9,7 +9,7 @@
  *  • Team salary view for managers
  */
 
-import { useCallback, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   PieChart,
@@ -18,24 +18,15 @@ import {
   ResponsiveContainer,
   Tooltip as RechartsTooltip,
   Legend,
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
 } from "recharts";
 import {
   Banknote,
-  Download,
   ChevronLeft,
   ChevronRight,
   TrendingUp,
   TrendingDown,
   IndianRupee,
   FileText,
-  Users,
-  Calendar,
-  AlertCircle,
   Loader2,
   CheckCircle2,
   Clock,
@@ -45,10 +36,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { cn, formatDate, getInitials } from "@/lib/utils";
-import { useAuth } from "@/hooks/useAuth";
-import { ADMIN_ROLES, ROLES } from "@/lib/constants";
+import { cn, formatDate } from "@/lib/utils";
 import * as salaryApi from "@/api/salary";
 import type { SalarySlip, SalaryComponent } from "@/api/salary";
 
@@ -85,20 +73,9 @@ function formatCurrency(amount: number): string {
 // ── Component ──────────────────────────────────────────────────────
 
 export function SalaryPage() {
-  const { user } = useAuth();
-  const isManager =
-    user &&
-    (user.role === ROLES.MANAGER ||
-      ADMIN_ROLES.includes(user.role as (typeof ADMIN_ROLES)[number]));
-
-  const [activeTab, setActiveTab] = useState<"slips" | "ctc" | "team">("slips");
+  const [activeTab, setActiveTab] = useState<"slips" | "ctc">("slips");
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedSlip, setSelectedSlip] = useState<SalarySlip | null>(null);
-  const [downloading, setDownloading] = useState<string | null>(null);
-
-  // Team salary month nav
-  const [teamMonth, setTeamMonth] = useState(new Date().getMonth() + 1);
-  const [teamYear, setTeamYear] = useState(new Date().getFullYear());
 
   // ── Queries ────────────────────────────────────────────────────
 
@@ -111,68 +88,29 @@ export function SalaryPage() {
     queryKey: ["ctcBreakdown"],
     queryFn: () => salaryApi.getCTCBreakdown(),
     enabled: activeTab === "ctc",
+    retry: 1,
   });
-
-  const { data: teamData, isLoading: loadingTeam } = useQuery({
-    queryKey: ["teamSalary", teamMonth, teamYear],
-    queryFn: () => salaryApi.getTeamSalary({ month: teamMonth, year: teamYear }),
-    enabled: activeTab === "team" && !!isManager,
-  });
-
-  // ── PDF Download ─────────────────────────────────────────────────
-
-  const handleDownloadPdf = useCallback(async (slipId: string, month: number, year: number) => {
-    setDownloading(slipId);
-    try {
-      const blob = await salaryApi.downloadSalarySlipPdf(slipId);
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `salary-slip-${MONTH_NAMES[month - 1]}-${year}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
-    } catch {
-      // Silently fail — could add toast notification
-    } finally {
-      setDownloading(null);
-    }
-  }, []);
 
   // ── CTC Chart Data ───────────────────────────────────────────────
 
   const ctcChartData = useMemo(() => {
-    if (!ctcData) return [];
-    return ctcData.components
+    if (!ctcData?.components) return [];
+    return (ctcData.components ?? [])
       .filter((c) => c.type === "earning")
       .map((c) => ({
         name: c.name,
-        value: c.monthly_amount,
-        percentage: c.percentage_of_ctc,
+        value: c.monthly_amount ?? 0,
+        percentage: c.percentage_of_ctc ?? 0,
       }));
   }, [ctcData]);
 
-  const deductionData = useMemo(() => {
-    if (!ctcData) return [];
-    return ctcData.components
-      .filter((c) => c.type === "deduction" || c.type === "employer_contribution")
-      .map((c) => ({
-        name: c.name,
-        value: c.monthly_amount,
-        type: c.type,
-        percentage: c.percentage_of_ctc,
-      }));
-  }, [ctcData]);
+  // deduction data is shown in the CTC table below, not in a separate chart
 
   // ── Render ───────────────────────────────────────────────────────
 
   const tabs = [
     { key: "slips" as const, label: "Salary Slips", icon: FileText },
     { key: "ctc" as const, label: "CTC Breakdown", icon: TrendingUp },
-    ...(isManager
-      ? [{ key: "team" as const, label: "Team Salary", icon: Users }]
-      : []),
   ];
 
   return (
@@ -239,15 +177,13 @@ export function SalaryPage() {
             <SlipDetailCard
               slip={selectedSlip}
               onClose={() => setSelectedSlip(null)}
-              onDownload={handleDownloadPdf}
-              downloading={downloading}
             />
           )}
 
           {/* Slips grid */}
           {loadingSlips ? (
             <LoadingPlaceholder />
-          ) : !slipsData?.data.length ? (
+          ) : !(slipsData?.data ?? []).length ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <Banknote className="h-12 w-12 text-muted-foreground/40" />
@@ -258,7 +194,7 @@ export function SalaryPage() {
             </Card>
           ) : (
             <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-              {slipsData.data.map((slip) => (
+              {(slipsData?.data ?? []).map((slip) => (
                 <SlipCard
                   key={slip.id}
                   slip={slip}
@@ -268,8 +204,6 @@ export function SalaryPage() {
                       selectedSlip?.id === slip.id ? null : slip,
                     )
                   }
-                  onDownload={handleDownloadPdf}
-                  downloading={downloading}
                 />
               ))}
             </div>
@@ -303,7 +237,7 @@ export function SalaryPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Annual CTC</p>
                       <p className="text-2xl font-bold text-foreground">
-                        {formatCurrency(ctcData.annual_ctc)}
+                        {formatCurrency(ctcData?.annual_ctc ?? 0)}
                       </p>
                     </div>
                   </CardContent>
@@ -316,7 +250,7 @@ export function SalaryPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Monthly CTC</p>
                       <p className="text-2xl font-bold text-foreground">
-                        {formatCurrency(ctcData.monthly_ctc)}
+                        {formatCurrency(ctcData?.monthly_ctc ?? 0)}
                       </p>
                     </div>
                   </CardContent>
@@ -329,7 +263,7 @@ export function SalaryPage() {
                     <div>
                       <p className="text-sm text-muted-foreground">Components</p>
                       <p className="text-2xl font-bold text-foreground">
-                        {ctcData.components.length}
+                        {(ctcData?.components ?? []).length}
                       </p>
                     </div>
                   </CardContent>
@@ -366,7 +300,7 @@ export function SalaryPage() {
                             ))}
                           </Pie>
                           <RechartsTooltip
-                            formatter={(value: number) => formatCurrency(value)}
+                            formatter={(value: number | undefined) => formatCurrency(value ?? 0)}
                             contentStyle={{
                               borderRadius: "8px",
                               border: "1px solid #e2e8f0",
@@ -413,16 +347,16 @@ export function SalaryPage() {
                               </span>
                             </td>
                           </tr>
-                          {ctcData.components
+                          {(ctcData?.components ?? [])
                             .filter((c) => c.type === "earning")
                             .map((c) => (
                               <tr key={c.name} className="group">
                                 <td className="py-2 text-foreground">{c.name}</td>
                                 <td className="py-2 text-right font-medium tabular-nums text-foreground">
-                                  {formatCurrency(c.monthly_amount)}
+                                  {formatCurrency(c.monthly_amount ?? 0)}
                                 </td>
                                 <td className="py-2 text-right tabular-nums text-muted-foreground">
-                                  {formatCurrency(c.annual_amount)}
+                                  {formatCurrency(c.annual_amount ?? 0)}
                                 </td>
                               </tr>
                             ))}
@@ -435,22 +369,22 @@ export function SalaryPage() {
                               </span>
                             </td>
                           </tr>
-                          {ctcData.components
+                          {(ctcData?.components ?? [])
                             .filter((c) => c.type === "deduction")
                             .map((c) => (
                               <tr key={c.name} className="group">
                                 <td className="py-2 text-foreground">{c.name}</td>
                                 <td className="py-2 text-right font-medium tabular-nums text-red-600">
-                                  -{formatCurrency(c.monthly_amount)}
+                                  -{formatCurrency(c.monthly_amount ?? 0)}
                                 </td>
                                 <td className="py-2 text-right tabular-nums text-muted-foreground">
-                                  -{formatCurrency(c.annual_amount)}
+                                  -{formatCurrency(c.annual_amount ?? 0)}
                                 </td>
                               </tr>
                             ))}
 
                           {/* Employer Contributions */}
-                          {ctcData.components.some((c) => c.type === "employer_contribution") && (
+                          {(ctcData?.components ?? []).some((c) => c.type === "employer_contribution") && (
                             <>
                               <tr>
                                 <td colSpan={3} className="pt-4 pb-1">
@@ -459,16 +393,16 @@ export function SalaryPage() {
                                   </span>
                                 </td>
                               </tr>
-                              {ctcData.components
+                              {(ctcData?.components ?? [])
                                 .filter((c) => c.type === "employer_contribution")
                                 .map((c) => (
                                   <tr key={c.name} className="group">
                                     <td className="py-2 text-foreground">{c.name}</td>
                                     <td className="py-2 text-right font-medium tabular-nums text-blue-600">
-                                      {formatCurrency(c.monthly_amount)}
+                                      {formatCurrency(c.monthly_amount ?? 0)}
                                     </td>
                                     <td className="py-2 text-right tabular-nums text-muted-foreground">
-                                      {formatCurrency(c.annual_amount)}
+                                      {formatCurrency(c.annual_amount ?? 0)}
                                     </td>
                                   </tr>
                                 ))}
@@ -485,153 +419,6 @@ export function SalaryPage() {
         </div>
       )}
 
-      {/* ── Team Salary Tab ─────────────────────────────────────── */}
-      {activeTab === "team" && isManager && (
-        <div className="space-y-6">
-          {/* Month navigation */}
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                if (teamMonth === 1) {
-                  setTeamMonth(12);
-                  setTeamYear((y) => y - 1);
-                } else {
-                  setTeamMonth((m) => m - 1);
-                }
-              }}
-              className="h-8 w-8"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="min-w-[160px] text-center text-sm font-semibold">
-              {MONTH_NAMES[teamMonth - 1]} {teamYear}
-            </span>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => {
-                if (teamMonth === 12) {
-                  setTeamMonth(1);
-                  setTeamYear((y) => y + 1);
-                } else {
-                  setTeamMonth((m) => m + 1);
-                }
-              }}
-              className="h-8 w-8"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {/* Totals */}
-          {teamData && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <Card className="border-0 bg-gradient-to-br from-emerald-50 to-teal-50 shadow-sm">
-                <CardContent className="p-5">
-                  <p className="text-sm text-muted-foreground">Total Gross</p>
-                  <p className="text-2xl font-bold text-foreground">
-                    {formatCurrency(teamData.total_gross)}
-                  </p>
-                </CardContent>
-              </Card>
-              <Card className="border-0 bg-gradient-to-br from-violet-50 to-purple-50 shadow-sm">
-                <CardContent className="p-5">
-                  <p className="text-sm text-muted-foreground">Total Net</p>
-                  <p className="text-2xl font-bold text-foreground">
-                    {formatCurrency(teamData.total_net)}
-                  </p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {loadingTeam ? (
-            <LoadingPlaceholder />
-          ) : !teamData?.data.length ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-16">
-                <Users className="h-12 w-12 text-muted-foreground/40" />
-                <p className="mt-3 text-sm text-muted-foreground">
-                  No team salary data for this month
-                </p>
-              </CardContent>
-            </Card>
-          ) : (
-            <Card>
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b bg-muted/50">
-                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                          Employee
-                        </th>
-                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">
-                          Department
-                        </th>
-                        <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                          Gross
-                        </th>
-                        <th className="px-4 py-3 text-right font-medium text-muted-foreground">
-                          Net
-                        </th>
-                        <th className="px-4 py-3 text-center font-medium text-muted-foreground">
-                          Status
-                        </th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y">
-                      {teamData.data.map((item) => {
-                        const statusCfg = PAYMENT_STATUS_CONFIG[item.payment_status] || PAYMENT_STATUS_CONFIG.pending;
-                        return (
-                          <tr
-                            key={item.employee_id}
-                            className="transition-colors hover:bg-muted/30"
-                          >
-                            <td className="px-4 py-3">
-                              <div className="flex items-center gap-3">
-                                <Avatar className="h-8 w-8">
-                                  <AvatarFallback className="text-xs">
-                                    {getInitials(item.display_name || item.employee_code)}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <p className="font-medium text-foreground">
-                                    {item.display_name || item.employee_code}
-                                  </p>
-                                  <p className="text-xs text-muted-foreground">
-                                    {item.designation || "—"}
-                                  </p>
-                                </div>
-                              </div>
-                            </td>
-                            <td className="px-4 py-3 text-muted-foreground">
-                              {item.department_name || "—"}
-                            </td>
-                            <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">
-                              {formatCurrency(item.gross_earnings)}
-                            </td>
-                            <td className="px-4 py-3 text-right font-medium tabular-nums text-foreground">
-                              {formatCurrency(item.net_salary)}
-                            </td>
-                            <td className="px-4 py-3 text-center">
-                              <Badge className={cn("border text-xs", statusCfg.bg, statusCfg.text)}>
-                                {statusCfg.label}
-                              </Badge>
-                            </td>
-                          </tr>
-                        );
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -642,14 +429,10 @@ function SlipCard({
   slip,
   isSelected,
   onSelect,
-  onDownload,
-  downloading,
 }: {
   slip: SalarySlip;
   isSelected: boolean;
   onSelect: () => void;
-  onDownload: (id: string, month: number, year: number) => void;
-  downloading: string | null;
 }) {
   const statusCfg = PAYMENT_STATUS_CONFIG[slip.payment_status] || PAYMENT_STATUS_CONFIG.pending;
   const StatusIcon = statusCfg.icon;
@@ -666,13 +449,13 @@ function SlipCard({
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground">
-              {MONTH_NAMES[slip.month - 1]} {slip.year}
+              {MONTH_NAMES[(slip.month ?? 1) - 1]} {slip.year ?? ""}
             </p>
             <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
-              {formatCurrency(slip.net_salary)}
+              {formatCurrency(slip.net_salary ?? 0)}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Gross: {formatCurrency(slip.gross_earnings)}
+              Gross: {formatCurrency(slip.gross_earnings ?? 0)}
             </p>
           </div>
           <Badge className={cn("gap-1 border text-xs", statusCfg.bg, statusCfg.text)}>
@@ -683,30 +466,13 @@ function SlipCard({
 
         <div className="mt-4 flex items-center justify-between">
           <p className="text-xs text-muted-foreground">
-            {slip.days_worked}/{slip.days_payable} days
-            {slip.loss_of_pay_days > 0 && (
+            {slip.days_worked ?? 0}/{slip.days_payable ?? 0} days
+            {(slip.loss_of_pay_days ?? 0) > 0 && (
               <span className="ml-1 text-red-500">
                 ({slip.loss_of_pay_days} LOP)
               </span>
             )}
           </p>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1.5 text-xs"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDownload(slip.id, slip.month, slip.year);
-            }}
-            disabled={downloading === slip.id}
-          >
-            {downloading === slip.id ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Download className="h-3.5 w-3.5" />
-            )}
-            PDF
-          </Button>
         </div>
       </CardContent>
     </Card>
@@ -718,17 +484,13 @@ function SlipCard({
 function SlipDetailCard({
   slip,
   onClose,
-  onDownload,
-  downloading,
 }: {
   slip: SalarySlip;
   onClose: () => void;
-  onDownload: (id: string, month: number, year: number) => void;
-  downloading: string | null;
 }) {
-  const earnings = slip.components.filter((c) => c.type === "earning");
-  const deductions = slip.components.filter((c) => c.type === "deduction");
-  const employer = slip.components.filter((c) => c.type === "employer_contribution");
+  const earnings = (slip.components ?? []).filter((c) => c.type === "earning");
+  const deductions = (slip.components ?? []).filter((c) => c.type === "deduction");
+  const employer = (slip.components ?? []).filter((c) => c.type === "employer_contribution");
 
   return (
     <Card className="border-primary/20 bg-gradient-to-br from-slate-50 to-gray-50">
@@ -736,27 +498,13 @@ function SlipDetailCard({
         <div>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary" />
-            {MONTH_NAMES[slip.month - 1]} {slip.year} — Salary Slip
+            {MONTH_NAMES[(slip.month ?? 1) - 1]} {slip.year ?? ""} — Salary Slip
           </CardTitle>
           <CardDescription>
             Payment date: {slip.payment_date ? formatDate(slip.payment_date) : "Pending"}
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            onClick={() => onDownload(slip.id, slip.month, slip.year)}
-            disabled={downloading === slip.id}
-          >
-            {downloading === slip.id ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <Download className="h-3.5 w-3.5" />
-            )}
-            Download PDF
-          </Button>
           <Button variant="ghost" size="sm" onClick={onClose}>
             ✕
           </Button>

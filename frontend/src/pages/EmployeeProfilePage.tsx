@@ -11,7 +11,7 @@
  */
 
 import { useMemo } from "react";
-import { useParams, Link, useNavigate } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
@@ -19,14 +19,11 @@ import {
   Phone,
   MapPin,
   Building2,
-  Calendar,
   Clock,
   AlertTriangle,
   CheckCircle2,
-  XCircle,
   User,
   Briefcase,
-  Heart,
   Shield,
   Users,
   CalendarDays,
@@ -833,7 +830,7 @@ function MiniStat({
   label,
   value,
   className,
-  isText = false,
+  isText: _isText = false,
 }: {
   label: string;
   value: number | string;

@@ -1,7 +1,17 @@
 /**
- * Helpdesk API module — tickets, comments, assignments.
+ * Helpdesk API module — tickets, responses, status updates.
  *
  * All endpoints go through the authenticated apiClient.
+ *
+ * Backend routes:
+ *   GET  /helpdesk/          — list all tickets
+ *   GET  /helpdesk/my-tickets — current user's tickets
+ *   GET  /helpdesk/{id}      — single ticket detail
+ *   GET  /helpdesk/{id}/responses — ticket responses
+ *   POST /helpdesk/          — create ticket
+ *   POST /helpdesk/{id}/responses — add response
+ *   PATCH /helpdesk/{id}     — update ticket (status, assignee, etc.)
+ *   DELETE /helpdesk/{id}    — delete ticket
  */
 
 import apiClient from "./client";
@@ -27,7 +37,7 @@ export interface EmployeeBrief {
   profile_photo_url: string | null;
 }
 
-export interface TicketComment {
+export interface TicketResponse {
   id: string;
   ticket_id: string;
   author_id: string;
@@ -36,6 +46,9 @@ export interface TicketComment {
   is_internal: boolean;
   created_at: string;
 }
+
+/** Keep TicketComment as alias for backward compat in pages */
+export type TicketComment = TicketResponse;
 
 export interface Ticket {
   id: string;
@@ -49,7 +62,7 @@ export interface Ticket {
   reporter: EmployeeBrief | null;
   assignee_id: string | null;
   assignee: EmployeeBrief | null;
-  comments: TicketComment[];
+  comments: TicketResponse[];
   created_at: string;
   updated_at: string;
   resolved_at: string | null;
@@ -70,15 +83,9 @@ export interface TicketListResponse {
   meta: PaginationMeta;
 }
 
-export interface HelpdeskSummary {
-  open_tickets: number;
-  in_progress_tickets: number;
-  resolved_today: number;
-  avg_resolution_hours: number;
-}
-
 // ── API Calls ──────────────────────────────────────────────────────
 
+/** GET /helpdesk/my-tickets */
 export async function getMyTickets(params?: {
   status?: TicketStatus;
   category?: TicketCategory;
@@ -89,6 +96,7 @@ export async function getMyTickets(params?: {
   return data;
 }
 
+/** GET /helpdesk/ — all tickets (admin/manager view) */
 export async function getAllTickets(params?: {
   status?: TicketStatus;
   category?: TicketCategory;
@@ -97,66 +105,70 @@ export async function getAllTickets(params?: {
   page?: number;
   page_size?: number;
 }): Promise<TicketListResponse> {
-  const { data } = await apiClient.get("/helpdesk/tickets", { params });
+  const { data } = await apiClient.get("/helpdesk/", { params });
   return data;
 }
 
+/** GET /helpdesk/{id} */
 export async function getTicket(ticketId: string): Promise<Ticket> {
-  const { data } = await apiClient.get(`/helpdesk/tickets/${ticketId}`);
+  const { data } = await apiClient.get(`/helpdesk/${ticketId}`);
   return data;
 }
 
+/** GET /helpdesk/{id}/responses */
+export async function getTicketResponses(ticketId: string): Promise<TicketResponse[]> {
+  const { data } = await apiClient.get(`/helpdesk/${ticketId}/responses`);
+  return data;
+}
+
+/** POST /helpdesk/ — create a new ticket */
 export async function createTicket(body: {
   subject: string;
   description: string;
   category: TicketCategory;
   priority: TicketPriority;
 }): Promise<Ticket> {
-  const { data } = await apiClient.post("/helpdesk/tickets", body);
+  const { data } = await apiClient.post("/helpdesk/", body);
   return data;
 }
 
+/** POST /helpdesk/{id}/responses — add a response/comment */
 export async function addComment(
   ticketId: string,
   body: { content: string; is_internal?: boolean },
-): Promise<TicketComment> {
+): Promise<TicketResponse> {
   const { data } = await apiClient.post(
-    `/helpdesk/tickets/${ticketId}/comments`,
+    `/helpdesk/${ticketId}/responses`,
     body,
   );
   return data;
 }
 
-export async function assignTicket(
+/** PATCH /helpdesk/{id} — update ticket fields (status, assignee, etc.) */
+export async function updateTicket(
   ticketId: string,
-  assigneeId: string,
+  body: {
+    status?: TicketStatus;
+    assignee_id?: string;
+    priority?: TicketPriority;
+  },
 ): Promise<Ticket> {
-  const { data } = await apiClient.put(
-    `/helpdesk/tickets/${ticketId}/assign`,
-    { assignee_id: assigneeId },
-  );
+  const { data } = await apiClient.patch(`/helpdesk/${ticketId}`, body);
   return data;
 }
 
-export async function escalateTicket(ticketId: string): Promise<Ticket> {
-  const { data } = await apiClient.put(
-    `/helpdesk/tickets/${ticketId}/escalate`,
-  );
-  return data;
-}
-
+/**
+ * Convenience: update just the status.
+ * Uses PATCH /helpdesk/{id} under the hood.
+ */
 export async function updateTicketStatus(
   ticketId: string,
   status: TicketStatus,
 ): Promise<Ticket> {
-  const { data } = await apiClient.put(
-    `/helpdesk/tickets/${ticketId}/status`,
-    { status },
-  );
-  return data;
+  return updateTicket(ticketId, { status });
 }
 
-export async function getHelpdeskSummary(): Promise<HelpdeskSummary> {
-  const { data } = await apiClient.get("/helpdesk/summary");
-  return data;
+/** DELETE /helpdesk/{id} */
+export async function deleteTicket(ticketId: string): Promise<void> {
+  await apiClient.delete(`/helpdesk/${ticketId}`);
 }

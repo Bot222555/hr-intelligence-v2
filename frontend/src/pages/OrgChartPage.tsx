@@ -5,7 +5,7 @@
  * Features: zoom/pan, collapse/expand nodes, click-to-navigate.
  */
 
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
 import {

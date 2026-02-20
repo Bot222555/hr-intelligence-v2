@@ -1,6 +1,15 @@
 /**
  * Dashboard API module — summary, attendance trend, department headcount,
- * upcoming birthdays, and recent activities.
+ * birthdays, new joiners, leave summary, and recent activities.
+ *
+ * Backend routes:
+ *   GET /dashboard/summary
+ *   GET /dashboard/attendance-trend
+ *   GET /dashboard/leave-summary
+ *   GET /dashboard/birthdays
+ *   GET /dashboard/new-joiners
+ *   GET /dashboard/department-headcount
+ *   GET /dashboard/recent-activities
  */
 
 import apiClient from "./client";
@@ -85,13 +94,40 @@ export interface RecentActivitiesResponse {
   data: RecentActivityItem[];
 }
 
+export interface LeaveSummaryItem {
+  leave_type: string;
+  leave_type_code: string;
+  total_used: number;
+  total_pending: number;
+}
+
+export interface LeaveSummaryResponse {
+  data: LeaveSummaryItem[];
+}
+
+export interface NewJoinerItem {
+  employee_id: string;
+  employee_code: string;
+  display_name: string | null;
+  department_name: string | null;
+  designation: string | null;
+  date_of_joining: string;
+  profile_photo_url: string | null;
+}
+
+export interface NewJoinersResponse {
+  data: NewJoinerItem[];
+}
+
 // ── API Calls ──────────────────────────────────────────────────────
 
+/** GET /dashboard/summary */
 export async function getDashboardSummary(): Promise<DashboardSummary> {
   const { data } = await apiClient.get("/dashboard/summary");
   return data;
 }
 
+/** GET /dashboard/attendance-trend */
 export async function getAttendanceTrend(
   days: number = 7,
 ): Promise<AttendanceTrendResponse> {
@@ -101,25 +137,40 @@ export async function getAttendanceTrend(
   return data;
 }
 
+/** GET /dashboard/department-headcount */
 export async function getDepartmentHeadcount(): Promise<DepartmentHeadcountResponse> {
   const { data } = await apiClient.get("/dashboard/department-headcount");
   return data;
 }
 
+/** GET /dashboard/birthdays */
 export async function getUpcomingBirthdays(
   days: number = 30,
 ): Promise<UpcomingBirthdaysResponse> {
-  const { data } = await apiClient.get("/dashboard/upcoming-birthdays", {
+  const { data } = await apiClient.get("/dashboard/birthdays", {
     params: { days },
   });
   return data;
 }
 
+/** GET /dashboard/recent-activities */
 export async function getRecentActivities(
   limit: number = 20,
 ): Promise<RecentActivitiesResponse> {
   const { data } = await apiClient.get("/dashboard/recent-activities", {
     params: { limit },
   });
+  return data;
+}
+
+/** GET /dashboard/leave-summary */
+export async function getLeaveSummary(): Promise<LeaveSummaryResponse> {
+  const { data } = await apiClient.get("/dashboard/leave-summary");
+  return data;
+}
+
+/** GET /dashboard/new-joiners */
+export async function getNewJoiners(): Promise<NewJoinersResponse> {
+  const { data } = await apiClient.get("/dashboard/new-joiners");
   return data;
 }

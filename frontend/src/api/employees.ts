@@ -194,10 +194,44 @@ export async function getEmployees(params?: {
   return data;
 }
 
+/** GET /employees/{id} — basic employee info */
+export async function getEmployee(employeeId: string): Promise<EmployeeDetail> {
+  const { data } = await apiClient.get(`/employees/${employeeId}`);
+  return data;
+}
+
+/** GET /employees/{id}/profile — full employee profile with attendance, leave, team data */
 export async function getEmployeeProfile(
   employeeId: string,
 ): Promise<EmployeeProfileResponse> {
   const { data } = await apiClient.get(`/employees/${employeeId}/profile`);
+  return data;
+}
+
+/** GET /employees/{id}/direct-reports */
+export async function getDirectReports(employeeId: string): Promise<{ data: EmployeeListItem[] }> {
+  const { data } = await apiClient.get(`/employees/${employeeId}/direct-reports`);
+  return data;
+}
+
+/** GET /employees/org-chart */
+export async function getOrgChart(params?: {
+  root_id?: string;
+  max_depth?: number;
+}): Promise<{ data: any[] }> {
+  const { data } = await apiClient.get("/employees/org-chart", { params });
+  return data;
+}
+
+/** POST /employees — create new employee */
+export async function createEmployee(body: Record<string, unknown>): Promise<EmployeeDetail> {
+  const { data } = await apiClient.post("/employees", body);
+  return data;
+}
+
+/** PUT /employees/{id} — update employee */
+export async function updateEmployee(employeeId: string, body: Record<string, unknown>): Promise<EmployeeDetail> {
+  const { data } = await apiClient.put(`/employees/${employeeId}`, body);
   return data;
 }
 
@@ -208,5 +242,11 @@ export async function getDepartments(): Promise<{ data: Department[]; message: s
 
 export async function getLocations(): Promise<{ data: Location[]; message: string }> {
   const { data } = await apiClient.get("/locations");
+  return data;
+}
+
+/** GET /locations/{id} */
+export async function getLocation(locationId: string): Promise<{ data: Location; message: string }> {
+  const { data } = await apiClient.get(`/locations/${locationId}`);
   return data;
 }

@@ -24,7 +24,6 @@ import {
 import {
   getDepartmentDetail,
   getDepartmentMembers,
-  type DepartmentDetail,
 } from "@/api/orgchart";
 import type { EmployeeListItem } from "@/api/employees";
 import { Button } from "@/components/ui/button";

@@ -22,7 +22,6 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  ArrowUpRight,
   Filter,
   MessageCircle,
   User,
@@ -374,12 +373,12 @@ function TicketCard({
                     </span>
                   </>
                 )}
-                {ticket.comments.length > 0 && (
+                {(ticket.comments ?? []).length > 0 && (
                   <>
                     <span>·</span>
                     <span className="flex items-center gap-1">
                       <MessageCircle className="h-3 w-3" />
-                      {ticket.comments.length}
+                      {(ticket.comments ?? []).length}
                     </span>
                   </>
                 )}
@@ -577,11 +576,6 @@ function TicketDetailView({
     },
   });
 
-  const escalateMut = useMutation({
-    mutationFn: () => helpdeskApi.escalateTicket(ticket.id),
-    onSuccess: () => onUpdate(),
-  });
-
   const statusMut = useMutation({
     mutationFn: (status: TicketStatus) =>
       helpdeskApi.updateTicketStatus(ticket.id, status),
@@ -672,15 +666,6 @@ function TicketDetailView({
                   >
                     <CheckCircle2 className="mr-1 h-3 w-3" /> Resolve
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-7 text-xs border-orange-200 text-orange-700 hover:bg-orange-50"
-                    onClick={() => escalateMut.mutate()}
-                    disabled={escalateMut.isPending}
-                  >
-                    <ArrowUpRight className="mr-1 h-3 w-3" /> Escalate
-                  </Button>
                 </>
               )}
               {ticket.status === "resolved" && (
@@ -705,7 +690,7 @@ function TicketDetailView({
             className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
           >
             <MessageCircle className="h-4 w-4" />
-            Comments ({ticket.comments?.length || 0})
+            Comments ({(ticket.comments ?? []).length})
             {showComments ? (
               <ChevronUp className="h-4 w-4" />
             ) : (
@@ -719,7 +704,7 @@ function TicketDetailView({
                 <div className="flex justify-center py-6">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
-              ) : ticket.comments?.length === 0 ? (
+              ) : (ticket.comments ?? []).length === 0 ? (
                 <div className="rounded-lg border border-dashed p-6 text-center">
                   <MessageCircle className="mx-auto h-8 w-8 text-muted-foreground/40" />
                   <p className="mt-2 text-sm text-muted-foreground">
@@ -727,7 +712,7 @@ function TicketDetailView({
                   </p>
                 </div>
               ) : (
-                ticket.comments?.map((c) => (
+                (ticket.comments ?? []).map((c) => (
                   <CommentBubble key={c.id} comment={c} />
                 ))
               )}

@@ -6,7 +6,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
-  Settings,
   Plus,
   Edit3,
   Check,
@@ -15,7 +14,6 @@ import {
   TreePalm,
   Sun,
   Moon,
-  Shield,
   ToggleLeft,
   ToggleRight,
 } from "lucide-react";

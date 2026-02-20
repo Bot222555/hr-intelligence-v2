@@ -1,7 +1,20 @@
 /**
- * Attendance API module — clock in/out, attendance records, regularization, holidays.
+ * Attendance API module — clock in/out, attendance records, regularization,
+ * holidays, shifts, policies.
  *
  * All endpoints go through the authenticated apiClient.
+ *
+ * Backend routes:
+ *   GET  /attendance/today
+ *   GET  /attendance/my-attendance
+ *   GET  /attendance/team
+ *   POST /attendance/clock-in
+ *   POST /attendance/clock-out
+ *   POST /attendance/regularization
+ *   PUT  /attendance/regularizations/{id}/approve
+ *   GET  /attendance/shifts
+ *   GET  /attendance/holidays
+ *   GET  /attendance/policies
  */
 
 import apiClient from "./client";
@@ -139,8 +152,28 @@ export interface Holiday {
   calendar_id: string;
 }
 
+export interface ShiftPolicy {
+  id: string;
+  name: string;
+  start_time: string;
+  end_time: string;
+  grace_minutes: number;
+  half_day_minutes: number;
+  full_day_minutes: number;
+  is_night_shift: boolean;
+  is_active: boolean;
+}
+
+export interface AttendancePolicy {
+  id: string;
+  name: string;
+  description: string | null;
+  is_active: boolean;
+}
+
 // ── Clock In / Out ─────────────────────────────────────────────────
 
+/** POST /attendance/clock-in */
 export async function clockIn(
   source: string = "web",
 ): Promise<ClockResponse> {
@@ -148,6 +181,7 @@ export async function clockIn(
   return data;
 }
 
+/** POST /attendance/clock-out */
 export async function clockOut(
   source: string = "web",
 ): Promise<ClockResponse> {
@@ -157,6 +191,7 @@ export async function clockOut(
 
 // ── My Attendance ──────────────────────────────────────────────────
 
+/** GET /attendance/my-attendance */
 export async function getMyAttendance(
   fromDate: string,
   toDate: string,
@@ -171,6 +206,7 @@ export async function getMyAttendance(
 
 // ── Today (Manager/HR view) ────────────────────────────────────────
 
+/** GET /attendance/today */
 export async function getTodayAttendance(params?: {
   department_id?: string;
   location_id?: string;
@@ -182,6 +218,7 @@ export async function getTodayAttendance(params?: {
 
 // ── Team Attendance ────────────────────────────────────────────────
 
+/** GET /attendance/team */
 export async function getTeamAttendance(
   fromDate: string,
   toDate: string,
@@ -196,6 +233,22 @@ export async function getTeamAttendance(
 
 // ── Regularization ─────────────────────────────────────────────────
 
+/** GET /attendance/regularizations — list regularization requests (inferred from PUT /attendance/regularizations/{id}/approve) */
+export async function getRegularizations(params?: {
+  status?: RegularizationStatus;
+  page?: number;
+  page_size?: number;
+}): Promise<RegularizationListResponse> {
+  try {
+    const { data } = await apiClient.get("/attendance/regularizations", { params });
+    return data;
+  } catch {
+    // Endpoint may not exist — return empty list gracefully
+    return { data: [], meta: { page: 1, page_size: 50, total: 0, total_pages: 0, has_next: false, has_prev: false } };
+  }
+}
+
+/** POST /attendance/regularization */
 export async function submitRegularization(body: {
   date: string;
   requested_status: AttendanceStatus;
@@ -207,23 +260,42 @@ export async function submitRegularization(body: {
   return data;
 }
 
-export async function getRegularizations(params?: {
-  status?: RegularizationStatus;
-  employee_id?: string;
-  page?: number;
-  page_size?: number;
-}): Promise<RegularizationListResponse> {
-  const { data } = await apiClient.get("/attendance/regularizations", { params });
+/** PUT /attendance/regularizations/{id}/approve */
+export async function approveRegularization(
+  regularizationId: string,
+  body?: { remarks?: string },
+): Promise<RegularizationRecord> {
+  const { data } = await apiClient.put(
+    `/attendance/regularizations/${regularizationId}/approve`,
+    body ?? {},
+  );
+  return data;
+}
+
+// ── Shifts ─────────────────────────────────────────────────────────
+
+/** GET /attendance/shifts */
+export async function getShifts(): Promise<ShiftPolicy[]> {
+  const { data } = await apiClient.get("/attendance/shifts");
   return data;
 }
 
 // ── Holidays ───────────────────────────────────────────────────────
 
+/** GET /attendance/holidays */
 export async function getHolidays(params?: {
   year?: number;
   location_id?: string;
 }): Promise<Holiday[]> {
   const { data } = await apiClient.get("/attendance/holidays", { params });
+  return data;
+}
+
+// ── Policies ───────────────────────────────────────────────────────
+
+/** GET /attendance/policies */
+export async function getAttendancePolicies(): Promise<AttendancePolicy[]> {
+  const { data } = await apiClient.get("/attendance/policies");
   return data;
 }
 

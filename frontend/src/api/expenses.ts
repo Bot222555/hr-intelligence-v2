@@ -1,7 +1,16 @@
 /**
- * Expenses API module — expense claims, approvals, summaries.
+ * Expenses API module — expense claims, approvals.
  *
  * All endpoints go through the authenticated apiClient.
+ *
+ * Backend routes:
+ *   GET   /expenses/              — list all expenses
+ *   GET   /expenses/my-expenses   — current user's expenses
+ *   GET   /expenses/{id}          — single expense detail
+ *   POST  /expenses/              — create expense
+ *   PATCH /expenses/{id}          — update expense
+ *   POST  /expenses/{id}/approve  — approve expense
+ *   POST  /expenses/{id}/reject   — reject expense
  */
 
 import apiClient from "./client";
@@ -71,18 +80,9 @@ export interface ExpenseListResponse {
   meta: PaginationMeta;
 }
 
-export interface ExpenseSummary {
-  total_claimed: number;
-  total_approved: number;
-  total_pending: number;
-  total_rejected: number;
-  total_reimbursed: number;
-  claims_count: number;
-  pending_count: number;
-}
-
 // ── API Calls ──────────────────────────────────────────────────────
 
+/** GET /expenses/my-expenses — current user's expense claims */
 export async function getMyExpenses(params?: {
   status?: ExpenseStatus;
   category?: ExpenseCategory;
@@ -91,15 +91,17 @@ export async function getMyExpenses(params?: {
   page?: number;
   page_size?: number;
 }): Promise<ExpenseListResponse> {
-  const { data } = await apiClient.get("/expenses/my-claims", { params });
+  const { data } = await apiClient.get("/expenses/my-expenses", { params });
   return data;
 }
 
+/** GET /expenses/{id} — single expense claim detail */
 export async function getExpenseClaim(claimId: string): Promise<ExpenseClaim> {
-  const { data } = await apiClient.get(`/expenses/claims/${claimId}`);
+  const { data } = await apiClient.get(`/expenses/${claimId}`);
   return data;
 }
 
+/** POST /expenses/ — create a new expense claim */
 export async function createExpenseClaim(body: {
   title: string;
   description?: string;
@@ -107,50 +109,55 @@ export async function createExpenseClaim(body: {
   total_amount: number;
   receipt_urls?: string[];
 }): Promise<ExpenseClaim> {
-  const { data } = await apiClient.post("/expenses/claims", body);
+  const { data } = await apiClient.post("/expenses/", body);
   return data;
 }
 
-export async function uploadReceipt(file: File): Promise<{ url: string }> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const { data } = await apiClient.post("/expenses/upload-receipt", formData, {
-    headers: { "Content-Type": "multipart/form-data" },
-  });
+/** PATCH /expenses/{id} — update an expense claim */
+export async function updateExpenseClaim(
+  claimId: string,
+  body: Partial<{
+    title: string;
+    description: string;
+    category: ExpenseCategory;
+    total_amount: number;
+    receipt_urls: string[];
+    status: ExpenseStatus;
+  }>,
+): Promise<ExpenseClaim> {
+  const { data } = await apiClient.patch(`/expenses/${claimId}`, body);
   return data;
 }
 
+/** GET /expenses/ — all expenses (admin/manager view) */
 export async function getTeamExpenses(params?: {
   status?: ExpenseStatus;
   employee_id?: string;
   page?: number;
   page_size?: number;
 }): Promise<ExpenseListResponse> {
-  const { data } = await apiClient.get("/expenses/team-claims", { params });
+  const { data } = await apiClient.get("/expenses/", { params });
   return data;
 }
 
+/** POST /expenses/{id}/approve */
 export async function approveExpense(
   claimId: string,
   remarks?: string,
 ): Promise<ExpenseClaim> {
-  const { data } = await apiClient.put(`/expenses/claims/${claimId}/approve`, {
+  const { data } = await apiClient.post(`/expenses/${claimId}/approve`, {
     remarks,
   });
   return data;
 }
 
+/** POST /expenses/{id}/reject */
 export async function rejectExpense(
   claimId: string,
   reason: string,
 ): Promise<ExpenseClaim> {
-  const { data } = await apiClient.put(`/expenses/claims/${claimId}/reject`, {
+  const { data } = await apiClient.post(`/expenses/${claimId}/reject`, {
     reason,
   });
-  return data;
-}
-
-export async function getExpenseSummary(): Promise<ExpenseSummary> {
-  const { data } = await apiClient.get("/expenses/summary");
   return data;
 }

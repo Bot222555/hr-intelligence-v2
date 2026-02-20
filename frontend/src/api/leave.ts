@@ -1,7 +1,20 @@
 /**
- * Leave API module — balances, requests, team leaves, calendar, policies.
+ * Leave API module — balances, requests, team leaves, calendar, policies,
+ * holidays, comp-off.
  *
  * All endpoints go through the authenticated apiClient.
+ *
+ * Backend routes:
+ *   GET  /leave/balances
+ *   GET  /leave/my-leaves
+ *   GET  /leave/team-leaves
+ *   GET  /leave/calendar
+ *   GET  /leave/holidays
+ *   GET  /leave/policies
+ *   POST /leave/apply
+ *   POST /leave/comp-off
+ *   PUT  /leave/{id}/approve
+ *   PUT  /leave/{id}/reject
  */
 
 import apiClient from "./client";
@@ -112,8 +125,17 @@ export interface LeaveCalendarResponse {
   total_entries: number;
 }
 
+export interface LeaveHoliday {
+  id: string;
+  name: string;
+  date: string;
+  type: string;
+  is_active: boolean;
+}
+
 // ── Balances ───────────────────────────────────────────────────────
 
+/** GET /leave/balances */
 export async function getBalances(year?: number): Promise<LeaveBalance[]> {
   const { data } = await apiClient.get("/leave/balances", {
     params: year ? { year } : undefined,
@@ -123,6 +145,7 @@ export async function getBalances(year?: number): Promise<LeaveBalance[]> {
 
 // ── Policies (Leave Types) ─────────────────────────────────────────
 
+/** GET /leave/policies */
 export async function getPolicies(isActive?: boolean): Promise<LeaveType[]> {
   const { data } = await apiClient.get("/leave/policies", {
     params: isActive !== undefined ? { is_active: isActive } : undefined,
@@ -140,13 +163,29 @@ export interface ApplyLeavePayload {
   day_details?: Record<string, LeaveDayType>;
 }
 
+/** POST /leave/apply */
 export async function applyLeave(body: ApplyLeavePayload): Promise<LeaveRequest> {
   const { data } = await apiClient.post("/leave/apply", body);
   return data;
 }
 
+// ── Comp-Off ───────────────────────────────────────────────────────
+
+export interface CompOffPayload {
+  worked_date: string;
+  reason: string;
+  hours_worked?: number;
+}
+
+/** POST /leave/comp-off */
+export async function applyCompOff(body: CompOffPayload): Promise<LeaveRequest> {
+  const { data } = await apiClient.post("/leave/comp-off", body);
+  return data;
+}
+
 // ── My Leaves ──────────────────────────────────────────────────────
 
+/** GET /leave/my-leaves */
 export async function getMyLeaves(params?: {
   status?: LeaveStatus;
   leave_type_id?: string;
@@ -161,6 +200,7 @@ export async function getMyLeaves(params?: {
 
 // ── Team Leaves (Manager) ──────────────────────────────────────────
 
+/** GET /leave/team-leaves */
 export async function getTeamLeaves(params?: {
   status?: LeaveStatus;
   employee_id?: string;
@@ -176,6 +216,7 @@ export async function getTeamLeaves(params?: {
 
 // ── Approve / Reject ───────────────────────────────────────────────
 
+/** PUT /leave/{id}/approve */
 export async function approveLeave(
   requestId: string,
   remarks?: string,
@@ -184,6 +225,7 @@ export async function approveLeave(
   return data;
 }
 
+/** PUT /leave/{id}/reject */
 export async function rejectLeave(
   requestId: string,
   reason: string,
@@ -194,6 +236,7 @@ export async function rejectLeave(
 
 // ── Calendar ───────────────────────────────────────────────────────
 
+/** GET /leave/calendar */
 export async function getLeaveCalendar(params: {
   month: number;
   year: number;
@@ -201,5 +244,15 @@ export async function getLeaveCalendar(params: {
   location_id?: string;
 }): Promise<LeaveCalendarResponse> {
   const { data } = await apiClient.get("/leave/calendar", { params });
+  return data;
+}
+
+// ── Leave Holidays ─────────────────────────────────────────────────
+
+/** GET /leave/holidays */
+export async function getLeaveHolidays(params?: {
+  year?: number;
+}): Promise<LeaveHoliday[]> {
+  const { data } = await apiClient.get("/leave/holidays", { params });
   return data;
 }

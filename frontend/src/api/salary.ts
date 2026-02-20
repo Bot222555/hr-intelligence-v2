@@ -1,7 +1,14 @@
 /**
- * Salary API module — salary slips, CTC breakdown, team salary.
+ * Salary API module — salary slips, CTC breakdown, components, team salary.
  *
  * All endpoints go through the authenticated apiClient.
+ *
+ * Backend routes:
+ *   GET /salary/my-salary
+ *   GET /salary/slips
+ *   GET /salary/components
+ *   GET /salary/my-ctc
+ *   GET /salary/{employee_id}/ctc
  */
 
 import apiClient from "./client";
@@ -53,26 +60,6 @@ export interface CTCBreakdown {
   }[];
 }
 
-export interface TeamSalaryItem {
-  employee_id: string;
-  employee_code: string;
-  display_name: string | null;
-  designation: string | null;
-  department_name: string | null;
-  profile_photo_url: string | null;
-  gross_earnings: number;
-  net_salary: number;
-  payment_status: string;
-}
-
-export interface TeamSalaryResponse {
-  month: number;
-  year: number;
-  data: TeamSalaryItem[];
-  total_gross: number;
-  total_net: number;
-}
-
 export interface SalarySummary {
   last_month_net: number;
   last_month_gross: number;
@@ -82,43 +69,46 @@ export interface SalarySummary {
   ytd_net: number;
 }
 
+export interface SalaryComponentDef {
+  id: string;
+  name: string;
+  type: "earning" | "deduction" | "employer_contribution";
+  is_taxable: boolean;
+  is_active: boolean;
+}
+
 // ── API Calls ──────────────────────────────────────────────────────
 
+/** GET /salary/my-salary — current user's salary summary */
+export async function getSalarySummary(): Promise<SalarySummary> {
+  const { data } = await apiClient.get("/salary/my-salary");
+  return data;
+}
+
+/** GET /salary/slips — list of salary slips for current user */
 export async function getMySalarySlips(params?: {
   year?: number;
   page?: number;
   page_size?: number;
 }): Promise<SalarySlipListResponse> {
-  const { data } = await apiClient.get("/salary/my-slips", { params });
+  const { data } = await apiClient.get("/salary/slips", { params });
   return data;
 }
 
-export async function getSalarySlip(slipId: string): Promise<SalarySlip> {
-  const { data } = await apiClient.get(`/salary/slips/${slipId}`);
+/** GET /salary/components — all salary component definitions */
+export async function getSalaryComponents(): Promise<SalaryComponentDef[]> {
+  const { data } = await apiClient.get("/salary/components");
   return data;
 }
 
-export async function downloadSalarySlipPdf(slipId: string): Promise<Blob> {
-  const { data } = await apiClient.get(`/salary/slips/${slipId}/pdf`, {
-    responseType: "blob",
-  });
-  return data;
-}
-
+/** GET /salary/my-ctc — current user's CTC breakdown */
 export async function getCTCBreakdown(): Promise<CTCBreakdown> {
-  const { data } = await apiClient.get("/salary/ctc-breakdown");
+  const { data } = await apiClient.get("/salary/my-ctc");
   return data;
 }
 
-export async function getTeamSalary(params: {
-  month: number;
-  year: number;
-}): Promise<TeamSalaryResponse> {
-  const { data } = await apiClient.get("/salary/team", { params });
-  return data;
-}
-
-export async function getSalarySummary(): Promise<SalarySummary> {
-  const { data } = await apiClient.get("/salary/summary");
+/** GET /salary/{employee_id}/ctc — specific employee's CTC (manager/admin) */
+export async function getEmployeeCTC(employeeId: string): Promise<CTCBreakdown> {
+  const { data } = await apiClient.get(`/salary/${employeeId}/ctc`);
   return data;
 }

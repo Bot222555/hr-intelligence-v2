@@ -22,12 +22,10 @@ import {
   Loader2,
   CheckCircle2,
   XCircle,
-  IndianRupee,
   Upload,
   FileCheck,
   Filter,
   Users,
-  TrendingUp,
   ArrowDownToLine,
   Ban,
   Eye,
@@ -35,8 +33,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { cn, formatDate, getInitials } from "@/lib/utils";
+import { cn, formatDate } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
 import { ADMIN_ROLES, ROLES } from "@/lib/constants";
 import * as expensesApi from "@/api/expenses";
@@ -123,11 +120,7 @@ export function ExpensesPage() {
 
   // ── Queries ────────────────────────────────────────────────────
 
-  const { data: summaryData } = useQuery({
-    queryKey: ["expenseSummary"],
-    queryFn: expensesApi.getExpenseSummary,
-    staleTime: 2 * 60 * 1000,
-  });
+  // Note: /expenses/summary endpoint not available — summary widgets removed
 
   const { data: myExpenses, isLoading: loadingMy } = useQuery({
     queryKey: ["myExpenses", statusFilter, page],
@@ -185,36 +178,7 @@ export function ExpensesPage() {
         </Button>
       </div>
 
-      {/* Summary Stats */}
-      {summaryData && (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          <SummaryStat
-            icon={<IndianRupee className="h-5 w-5 text-violet-600" />}
-            bg="bg-violet-50"
-            label="Total Claimed"
-            value={formatCurrency(summaryData.total_claimed)}
-          />
-          <SummaryStat
-            icon={<CheckCircle2 className="h-5 w-5 text-emerald-600" />}
-            bg="bg-emerald-50"
-            label="Approved"
-            value={formatCurrency(summaryData.total_approved)}
-          />
-          <SummaryStat
-            icon={<Clock className="h-5 w-5 text-amber-600" />}
-            bg="bg-amber-50"
-            label="Pending"
-            value={formatCurrency(summaryData.total_pending)}
-            subtext={`${summaryData.pending_count} claims`}
-          />
-          <SummaryStat
-            icon={<XCircle className="h-5 w-5 text-red-500" />}
-            bg="bg-red-50"
-            label="Rejected"
-            value={formatCurrency(summaryData.total_rejected)}
-          />
-        </div>
-      )}
+      {/* Summary stats not available from this backend */}
 
       {/* Tab navigation for manager */}
       {isManager && (
@@ -308,7 +272,7 @@ export function ExpensesPage() {
       ) : (
         <>
           <div className="space-y-3">
-            {activeData?.data.map((claim) => (
+            {(activeData?.data ?? []).map((claim) => (
               <ClaimCard
                 key={claim.id}
                 claim={claim}
@@ -321,7 +285,7 @@ export function ExpensesPage() {
                 }
               />
             ))}
-            {activeData?.data.length === 0 && (
+            {(activeData?.data ?? []).length === 0 && (
               <Card>
                 <CardContent className="flex flex-col items-center justify-center py-16">
                   <Receipt className="h-12 w-12 text-muted-foreground/40" />
@@ -373,36 +337,7 @@ export function ExpensesPage() {
   );
 }
 
-// ── Summary Stat Card ──────────────────────────────────────────────
-
-function SummaryStat({
-  icon,
-  bg,
-  label,
-  value,
-  subtext,
-}: {
-  icon: React.ReactNode;
-  bg: string;
-  label: string;
-  value: string;
-  subtext?: string;
-}) {
-  return (
-    <Card className="py-0">
-      <CardContent className="flex items-center gap-4 p-5">
-        <div className={cn("rounded-xl p-3", bg)}>{icon}</div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm text-muted-foreground">{label}</p>
-          <p className="text-xl font-bold text-foreground">{value}</p>
-          {subtext && (
-            <p className="text-xs text-muted-foreground">{subtext}</p>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-}
+// (Summary stat card removed — /expenses/summary endpoint not available)
 
 // ── Claim Card ─────────────────────────────────────────────────────
 
@@ -461,12 +396,12 @@ function ClaimCard({
                     </span>
                   </>
                 )}
-                {claim.receipt_urls.length > 0 && (
+                {(claim.receipt_urls ?? []).length > 0 && (
                   <>
                     <span>·</span>
                     <span className="flex items-center gap-1">
                       <Receipt className="h-3 w-3" />
-                      {claim.receipt_urls.length} receipt{claim.receipt_urls.length !== 1 ? "s" : ""}
+                      {(claim.receipt_urls ?? []).length} receipt{(claim.receipt_urls ?? []).length !== 1 ? "s" : ""}
                     </span>
                   </>
                 )}
@@ -521,14 +456,15 @@ function CreateExpenseForm({ onSuccess }: { onSuccess: () => void }) {
 
     setUploading(true);
     try {
-      const urls: string[] = [];
+      // Receipt upload will be handled via the claim creation flow
+      // For now, just track file names as placeholders
+      const names: string[] = [];
       for (const file of Array.from(files)) {
-        const result = await expensesApi.uploadReceipt(file);
-        urls.push(result.url);
+        names.push(file.name);
       }
-      setReceiptUrls((prev) => [...prev, ...urls]);
+      setReceiptUrls((prev) => [...prev, ...names]);
     } catch {
-      setError("Failed to upload receipt");
+      setError("Failed to process receipt");
     } finally {
       setUploading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -673,7 +609,7 @@ function CreateExpenseForm({ onSuccess }: { onSuccess: () => void }) {
               </div>
               {receiptUrls.length > 0 && (
                 <div className="mt-2 flex flex-wrap gap-2">
-                  {receiptUrls.map((url, i) => (
+                  {receiptUrls.map((_url, i) => (
                     <div
                       key={i}
                       className="flex items-center gap-1.5 rounded-md border bg-muted/50 px-2 py-1 text-xs"
@@ -802,13 +738,13 @@ function ClaimDetailView({
 
       <CardContent className="space-y-4">
         {/* Receipts */}
-        {claim.receipt_urls.length > 0 && (
+        {(claim.receipt_urls ?? []).length > 0 && (
           <div>
             <h4 className="mb-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground">
               Receipts
             </h4>
             <div className="flex flex-wrap gap-2">
-              {claim.receipt_urls.map((url, i) => (
+              {(claim.receipt_urls ?? []).map((url, i) => (
                 <a
                   key={i}
                   href={url}

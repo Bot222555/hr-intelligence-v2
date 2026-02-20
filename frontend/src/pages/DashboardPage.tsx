@@ -1,5 +1,5 @@
 /**
- * DashboardPage — HR Intelligence command center.
+ * DashboardPage — HR Intelligence command centre.
  *
  * Features:
  *  • Summary KPI cards (total employees, present today, on leave, pending approvals)
@@ -7,6 +7,7 @@
  *  • Department headcount horizontal bar chart
  *  • Upcoming birthdays list
  *  • Recent activities feed
+ *  • Quick-access widgets for Salary, Leave summary, New Joiners
  */
 
 import { useState } from "react";
@@ -36,10 +37,8 @@ import {
   Loader2,
   AlertCircle,
   Banknote,
-  Ticket,
-  Receipt,
-  IndianRupee,
   Calendar,
+  UserPlus,
 } from "lucide-react";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -56,29 +55,37 @@ import { cn, getInitials, formatDate } from "@/lib/utils";
 import { ROUTES } from "@/lib/constants";
 import * as dashboardApi from "@/api/dashboard";
 import * as salaryApi from "@/api/salary";
-import * as helpdeskApi from "@/api/helpdesk";
-import * as expensesApi from "@/api/expenses";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
 function formatShortDate(dateStr: string): string {
-  const d = new Date(dateStr);
-  return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  try {
+    const d = new Date(dateStr);
+    if (isNaN(d.getTime())) return dateStr;
+    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  } catch {
+    return dateStr;
+  }
 }
 
 function timeAgo(dateStr: string): string {
-  const now = new Date();
-  const then = new Date(dateStr);
-  const diffMs = now.getTime() - then.getTime();
-  const diffMin = Math.floor(diffMs / 60000);
-  if (diffMin < 1) return "just now";
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay === 1) return "yesterday";
-  if (diffDay < 7) return `${diffDay}d ago`;
-  return formatDate(dateStr);
+  try {
+    const now = new Date();
+    const then = new Date(dateStr);
+    if (isNaN(then.getTime())) return dateStr;
+    const diffMs = now.getTime() - then.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return "just now";
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffHr = Math.floor(diffMin / 60);
+    if (diffHr < 24) return `${diffHr}h ago`;
+    const diffDay = Math.floor(diffHr / 24);
+    if (diffDay === 1) return "yesterday";
+    if (diffDay < 7) return `${diffDay}d ago`;
+    return formatDate(dateStr);
+  } catch {
+    return dateStr;
+  }
 }
 
 const ACTION_ICONS: Record<string, string> = {
@@ -177,7 +184,7 @@ export function DashboardPage() {
   });
 
   const birthdaysQuery = useQuery({
-    queryKey: ["dashboard", "upcoming-birthdays"],
+    queryKey: ["dashboard", "birthdays"],
     queryFn: () => dashboardApi.getUpcomingBirthdays(30),
     staleTime: 10 * 60 * 1000,
   });
@@ -188,24 +195,25 @@ export function DashboardPage() {
     staleTime: 1 * 60 * 1000,
   });
 
-  // ── New module queries ─────────────────────────────────────────
-
   const salarySummaryQuery = useQuery({
     queryKey: ["dashboard", "salary-summary"],
     queryFn: salaryApi.getSalarySummary,
     staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 
-  const helpdeskSummaryQuery = useQuery({
-    queryKey: ["dashboard", "helpdesk-summary"],
-    queryFn: helpdeskApi.getHelpdeskSummary,
-    staleTime: 2 * 60 * 1000,
+  const leaveSummaryQuery = useQuery({
+    queryKey: ["dashboard", "leave-summary"],
+    queryFn: dashboardApi.getLeaveSummary,
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 
-  const expenseSummaryQuery = useQuery({
-    queryKey: ["dashboard", "expense-summary"],
-    queryFn: expensesApi.getExpenseSummary,
-    staleTime: 2 * 60 * 1000,
+  const newJoinersQuery = useQuery({
+    queryKey: ["dashboard", "new-joiners"],
+    queryFn: dashboardApi.getNewJoiners,
+    staleTime: 10 * 60 * 1000,
+    retry: 1,
   });
 
   // ── Render ─────────────────────────────────────────────────────
@@ -241,6 +249,8 @@ export function DashboardPage() {
                   </p>
                   {isLoading ? (
                     <div className="mt-1 h-7 w-12 animate-pulse rounded bg-muted" />
+                  ) : summaryQuery.isError ? (
+                    <p className="text-sm text-muted-foreground">—</p>
                   ) : (
                     <p className="text-2xl font-bold text-foreground">
                       {value?.toLocaleString("en-IN") ?? "—"}
@@ -295,6 +305,11 @@ export function DashboardPage() {
             ) : trendQuery.isError ? (
               <ErrorPlaceholder
                 message="Failed to load attendance trend"
+                height="h-[280px]"
+              />
+            ) : (trendQuery.data?.data ?? []).length === 0 ? (
+              <EmptyPlaceholder
+                message="No attendance trend data available"
                 height="h-[280px]"
               />
             ) : (
@@ -428,7 +443,7 @@ export function DashboardPage() {
             </div>
             {headcountQuery.data && (
               <CardDescription>
-                {headcountQuery.data.total_departments} departments
+                {headcountQuery.data.total_departments ?? 0} departments
               </CardDescription>
             )}
           </CardHeader>
@@ -438,6 +453,11 @@ export function DashboardPage() {
             ) : headcountQuery.isError ? (
               <ErrorPlaceholder
                 message="Failed to load headcount"
+                height="h-[280px]"
+              />
+            ) : (headcountQuery.data?.data ?? []).length === 0 ? (
+              <EmptyPlaceholder
+                message="No department data available"
                 height="h-[280px]"
               />
             ) : (
@@ -494,7 +514,7 @@ export function DashboardPage() {
         </Card>
       </div>
 
-      {/* ── Quick Access: Salary, Helpdesk, Expenses ─────────────── */}
+      {/* ── Quick Access: Salary, Leave Summary, New Joiners ──────── */}
       <div className="grid gap-4 sm:grid-cols-3">
         {/* Salary Summary Widget */}
         <Card
@@ -513,14 +533,16 @@ export function DashboardPage() {
             </div>
             {salarySummaryQuery.isLoading ? (
               <div className="h-12 animate-pulse rounded bg-muted" />
+            ) : salarySummaryQuery.isError ? (
+              <p className="text-sm text-muted-foreground">No salary data available</p>
             ) : salarySummaryQuery.data ? (
               <div>
                 <p className="text-2xl font-bold tabular-nums text-foreground">
-                  {formatCurrency(salarySummaryQuery.data.last_month_net)}
+                  {formatCurrency(salarySummaryQuery.data?.last_month_net ?? 0)}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {salarySummaryQuery.data.last_month_label}
-                  {salarySummaryQuery.data.next_payroll_date && (
+                  {salarySummaryQuery.data?.last_month_label ?? ""}
+                  {salarySummaryQuery.data?.next_payroll_date && (
                     <span className="ml-2">
                       · Next payroll:{" "}
                       <span className="font-medium text-foreground">
@@ -536,33 +558,38 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Helpdesk Widget */}
+        {/* Leave Summary Widget */}
         <Card
           className="cursor-pointer transition-all hover:shadow-md"
-          onClick={() => navigate(ROUTES.HELPDESK)}
+          onClick={() => navigate(ROUTES.LEAVE)}
         >
           <CardContent className="p-5">
             <div className="flex items-center gap-3 mb-3">
               <div className="rounded-xl bg-blue-50 p-2.5">
-                <Ticket className="h-5 w-5 text-blue-600" />
+                <Calendar className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Helpdesk</p>
-                <p className="text-xs text-muted-foreground">Open tickets</p>
+                <p className="text-sm font-semibold text-foreground">Leave</p>
+                <p className="text-xs text-muted-foreground">Summary</p>
               </div>
             </div>
-            {helpdeskSummaryQuery.isLoading ? (
+            {leaveSummaryQuery.isLoading ? (
               <div className="h-12 animate-pulse rounded bg-muted" />
-            ) : helpdeskSummaryQuery.data ? (
-              <div>
-                <p className="text-2xl font-bold tabular-nums text-foreground">
-                  {helpdeskSummaryQuery.data.open_tickets}
-                </p>
-                <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground">
-                  <span>{helpdeskSummaryQuery.data.in_progress_tickets} in progress</span>
-                  <span>·</span>
-                  <span>{helpdeskSummaryQuery.data.resolved_today} resolved today</span>
-                </div>
+            ) : leaveSummaryQuery.isError ? (
+              <p className="text-sm text-muted-foreground">No leave data available</p>
+            ) : (leaveSummaryQuery.data?.data ?? []).length > 0 ? (
+              <div className="space-y-1">
+                {(leaveSummaryQuery.data?.data ?? []).slice(0, 3).map((item) => (
+                  <div key={item.leave_type_code} className="flex items-center justify-between text-xs">
+                    <span className="text-muted-foreground">{item.leave_type_code}</span>
+                    <span className="font-medium text-foreground">
+                      {item.total_used} used
+                      {item.total_pending > 0 && (
+                        <span className="ml-1 text-amber-600">({item.total_pending} pending)</span>
+                      )}
+                    </span>
+                  </div>
+                ))}
               </div>
             ) : (
               <p className="text-sm text-muted-foreground">—</p>
@@ -570,37 +597,38 @@ export function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Expenses Widget */}
-        <Card
-          className="cursor-pointer transition-all hover:shadow-md"
-          onClick={() => navigate(ROUTES.EXPENSES)}
-        >
+        {/* New Joiners Widget */}
+        <Card>
           <CardContent className="p-5">
             <div className="flex items-center gap-3 mb-3">
               <div className="rounded-xl bg-violet-50 p-2.5">
-                <Receipt className="h-5 w-5 text-violet-600" />
+                <UserPlus className="h-5 w-5 text-violet-600" />
               </div>
               <div>
-                <p className="text-sm font-semibold text-foreground">Expenses</p>
-                <p className="text-xs text-muted-foreground">Pending claims</p>
+                <p className="text-sm font-semibold text-foreground">New Joiners</p>
+                <p className="text-xs text-muted-foreground">This month</p>
               </div>
             </div>
-            {expenseSummaryQuery.isLoading ? (
+            {newJoinersQuery.isLoading ? (
               <div className="h-12 animate-pulse rounded bg-muted" />
-            ) : expenseSummaryQuery.data ? (
+            ) : newJoinersQuery.isError ? (
+              <p className="text-sm text-muted-foreground">No data available</p>
+            ) : (newJoinersQuery.data?.data ?? []).length > 0 ? (
               <div>
                 <p className="text-2xl font-bold tabular-nums text-foreground">
-                  {expenseSummaryQuery.data.pending_count}
+                  {(newJoinersQuery.data?.data ?? []).length}
                 </p>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  {formatCurrency(expenseSummaryQuery.data.total_pending)} pending
-                  <span className="ml-2">
-                    · {formatCurrency(expenseSummaryQuery.data.total_approved)} approved
-                  </span>
-                </p>
+                <div className="mt-2 space-y-1">
+                  {(newJoinersQuery.data?.data ?? []).slice(0, 2).map((joiner) => (
+                    <p key={joiner.employee_id} className="text-xs text-muted-foreground truncate">
+                      {joiner.display_name ?? joiner.employee_code}
+                      {joiner.department_name && ` · ${joiner.department_name}`}
+                    </p>
+                  ))}
+                </div>
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">—</p>
+              <p className="text-sm text-muted-foreground">No new joiners this month</p>
             )}
           </CardContent>
         </Card>
@@ -625,14 +653,14 @@ export function DashboardPage() {
                 message="Failed to load birthdays"
                 height="h-[240px]"
               />
-            ) : !birthdaysQuery.data?.data.length ? (
+            ) : !(birthdaysQuery.data?.data ?? []).length ? (
               <div className="flex h-[240px] flex-col items-center justify-center text-muted-foreground">
                 <Cake className="mb-2 h-8 w-8 opacity-40" />
                 <p className="text-sm">No upcoming birthdays</p>
               </div>
             ) : (
               <div className="max-h-[280px] space-y-3 overflow-y-auto pr-1">
-                {birthdaysQuery.data.data.map((person) => (
+                {(birthdaysQuery.data?.data ?? []).map((person) => (
                   <div
                     key={person.employee_id}
                     className="flex items-center gap-3 rounded-lg border border-transparent p-2 transition-colors hover:border-border hover:bg-muted/50"
@@ -701,14 +729,14 @@ export function DashboardPage() {
                 message="Failed to load activities"
                 height="h-[240px]"
               />
-            ) : !activitiesQuery.data?.data.length ? (
+            ) : !(activitiesQuery.data?.data ?? []).length ? (
               <div className="flex h-[240px] flex-col items-center justify-center text-muted-foreground">
                 <Activity className="mb-2 h-8 w-8 opacity-40" />
                 <p className="text-sm">No recent activity</p>
               </div>
             ) : (
               <div className="max-h-[280px] space-y-1 overflow-y-auto pr-1">
-                {activitiesQuery.data.data.map((item) => (
+                {(activitiesQuery.data?.data ?? []).map((item) => (
                   <div
                     key={item.id}
                     className="flex items-start gap-3 rounded-lg p-2 transition-colors hover:bg-muted/50"
@@ -766,6 +794,25 @@ function ErrorPlaceholder({
     >
       <AlertCircle className="h-5 w-5 text-red-400" />
       <p className="text-sm text-red-500">{message}</p>
+    </div>
+  );
+}
+
+function EmptyPlaceholder({
+  message,
+  height = "h-[200px]",
+}: {
+  message: string;
+  height?: string;
+}) {
+  return (
+    <div
+      className={cn(
+        "flex flex-col items-center justify-center gap-2 rounded-lg bg-muted/20",
+        height
+      )}
+    >
+      <p className="text-sm text-muted-foreground">{message}</p>
     </div>
   );
 }
