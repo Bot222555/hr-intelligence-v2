@@ -16,6 +16,8 @@ const PAGE_TITLES: Record<string, string> = {
   [ROUTES.DASHBOARD]: "Dashboard",
   [ROUTES.EMPLOYEES]: "Employees",
   [ROUTES.ATTENDANCE]: "Attendance",
+  [ROUTES.TEAM_ATTENDANCE]: "Team Attendance",
+  [ROUTES.REGULARIZATION]: "Regularization",
   [ROUTES.LEAVE]: "Leave Management",
   [ROUTES.SETTINGS]: "Settings",
 };

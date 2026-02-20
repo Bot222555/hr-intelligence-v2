@@ -21,6 +21,7 @@ from backend.leave.schemas import (
     CompOffOut,
     LeaveApproveRequest,
     LeaveBalanceOut,
+    LeaveCalendarOut,
     LeaveCancelRequest,
     LeaveRejectRequest,
     LeaveRequestCreate,
@@ -175,6 +176,25 @@ async def get_holidays(
     """List holidays, optionally filtered by year and location."""
     return await AttendanceService.get_holidays(
         db, year=year, location_id=location_id,
+    )
+
+
+# ── GET /calendar ────────────────────────────────────────────────────
+
+@router.get("/calendar", response_model=LeaveCalendarOut)
+async def leave_calendar(
+    month: int = Query(..., ge=1, le=12),
+    year: int = Query(..., ge=2020, le=2099),
+    department_id: Optional[uuid.UUID] = Query(None),
+    location_id: Optional[uuid.UUID] = Query(None),
+    employee: Employee = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Get team leave calendar for a given month (approved + pending leaves)."""
+    return await LeaveService.get_leave_calendar(
+        db, month, year,
+        department_id=department_id,
+        location_id=location_id,
     )
 
 

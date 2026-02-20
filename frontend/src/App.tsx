@@ -8,6 +8,8 @@ import { AuthCallbackPage } from "@/pages/AuthCallbackPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { EmployeesPage } from "@/pages/EmployeesPage";
 import { AttendancePage } from "@/pages/AttendancePage";
+import { TeamAttendancePage } from "@/pages/TeamAttendancePage";
+import { RegularizationPage } from "@/pages/RegularizationPage";
 import { LeavePage } from "@/pages/LeavePage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
@@ -38,6 +40,8 @@ export default function App() {
                 <Route path="dashboard" element={<DashboardPage />} />
                 <Route path="employees" element={<EmployeesPage />} />
                 <Route path="attendance" element={<AttendancePage />} />
+                <Route path="attendance/team" element={<TeamAttendancePage />} />
+                <Route path="attendance/regularization" element={<RegularizationPage />} />
                 <Route path="leave" element={<LeavePage />} />
               </Route>
 

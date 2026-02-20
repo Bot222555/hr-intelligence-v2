@@ -7,6 +7,8 @@ import {
   Settings,
   ChevronLeft,
   ChevronRight,
+  UsersRound,
+  FileEdit,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -33,6 +35,8 @@ const NAV_ITEMS: NavItemDef[] = [
   { label: "Dashboard", path: ROUTES.DASHBOARD, icon: LayoutDashboard },
   { label: "Employees", path: ROUTES.EMPLOYEES, icon: Users },
   { label: "Attendance", path: ROUTES.ATTENDANCE, icon: Clock },
+  { label: "Team Attendance", path: ROUTES.TEAM_ATTENDANCE, icon: UsersRound },
+  { label: "Regularization", path: ROUTES.REGULARIZATION, icon: FileEdit },
   { label: "Leave", path: ROUTES.LEAVE, icon: Calendar },
 ];
 
