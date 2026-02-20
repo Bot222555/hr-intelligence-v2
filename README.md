@@ -1,38 +1,51 @@
 # HR Intelligence v2.0
 
-> Creativefuel Custom HR Platform — Phase 1: Core HR + Attendance + Leave
+**Creativefuel Custom HR Platform** — Phase 1: Core HR + Attendance + Leave
 
-**Domain:** hr.cfai.in | **Server:** AWS EC2 (3.110.62.153)
+> Replacing Keka for 283 active employees across 21 departments, 2 locations.
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| Backend | Python 3.12 + FastAPI + Uvicorn |
-| Database | PostgreSQL 16 |
-| Cache | Redis 7 |
-| Frontend | React 18 + Vite + TypeScript |
-| UI | Tailwind CSS + shadcn/ui |
-| Auth | Google OAuth 2.0 + JWT (@creativefuel.io domain lock) |
-| ORM | SQLAlchemy 2.0 + Alembic |
-| Deploy | Docker + Docker Compose + Nginx |
+| **Backend** | Python 3.12 + FastAPI + Uvicorn |
+| **Database** | PostgreSQL 16 |
+| **Cache** | Redis 7 |
+| **Frontend** | React 18 + Vite + TypeScript |
+| **UI** | Tailwind CSS + shadcn/ui |
+| **Auth** | Google OAuth 2.0 + JWT |
+| **ORM** | SQLAlchemy 2.0 + Alembic |
+| **Deploy** | Docker + Docker Compose + Nginx |
 
 ## Quick Start
 
 ```bash
-# Copy environment variables
-cp .env.example .env
-# Edit .env with your credentials
+# 1. Clone and setup
+git clone https://github.com/Bot222555/hr-intelligence-v2.git
+cd hr-intelligence-v2
+cp .env.example .env  # Edit with real values
 
-# Start services (PostgreSQL + Redis + API)
-docker compose up -d
+# 2. Start infrastructure
+docker compose up -d db redis
 
-# Run migrations
-docker compose exec api alembic upgrade head
+# 3. Install Python deps
+pip install -r requirements.txt
 
-# API available at http://localhost:8000
-# Health check: http://localhost:8000/api/v1/health
+# 4. Run migrations
+alembic upgrade head
+
+# 5. Start API server
+uvicorn backend.main:app --reload --port 8000
+
+# 6. Start frontend (once built)
+cd frontend && npm install && npm run dev
 ```
+
+## API Docs
+
+- Swagger UI: http://localhost:8000/api/docs
+- ReDoc: http://localhost:8000/api/redoc
+- Health: http://localhost:8000/api/v1/health
 
 ## Project Structure
 
@@ -41,37 +54,44 @@ hr-intelligence-v2/
 ├── backend/           # FastAPI application
 │   ├── auth/          # Google OAuth + JWT + RBAC
 │   ├── core_hr/       # Employee management
-│   ├── attendance/    # Attendance & time tracking
+│   ├── attendance/    # Clock in/out, regularization
 │   ├── leave/         # Leave management
-│   ├── dashboard/     # Analytics & dashboard
+│   ├── dashboard/     # Analytics & overview
 │   ├── notifications/ # In-app notifications
 │   └── common/        # Shared utilities
 ├── frontend/          # React SPA
 ├── alembic/           # Database migrations
 ├── migration/         # Keka → PostgreSQL data migration
 ├── tests/             # pytest test suite
-├── scripts/           # Deployment & utility scripts
+├── scripts/           # Setup, deploy, backup
 └── nginx/             # Nginx configuration
 ```
 
-## Blueprint
+## Commands
 
-Full specification: [memory/hr-intelligence-fresh-build.md](../memory/hr-intelligence-fresh-build.md) (3,175 lines)
+```bash
+make help          # Show all commands
+make dev           # Start dev infrastructure
+make test          # Run tests
+make lint          # Run linter
+make migrate       # Run database migrations
+make deploy        # Deploy to production
+make backup        # Backup database
+```
 
-- 22 tasks decomposed for fleet agents
-- Complete database schema (PostgreSQL)
-- Full API contracts (REST, JSON, JWT auth)
-- Frontend component specs
-- Test plan with 90+ test cases
-- Deployment & CI/CD pipeline
+## Architecture
 
-## Team
+- **Modular monolith** — Single FastAPI app with separated modules
+- **API-first** — Pure JSON API, frontend is separate SPA
+- **RBAC** — Four roles: employee, manager, hr_admin, system_admin
+- **Audit trail** — Every mutation logged
+- **Mobile-first** — Responsive design for phone usage
 
-- **Alfred** — Coordinator & memory
-- **Donna** — Builder (all coding tasks)
-- **Vision** — Code reviewer
-- **Jarvis** — Test orchestrator
+## Domain
+
+- **Production:** https://hr.cfai.in
+- **Server:** AWS EC2 (3.110.62.153)
 
 ---
 
-*Built for Creativefuel | 283 active employees | 21 departments | 2 locations*
+*Built by the Alfred Fleet 🎩 — Donna builds, Vision reviews, Jarvis tests, Alfred orchestrates.*

@@ -1,0 +1,1 @@
+"""auth — router.py placeholder."""

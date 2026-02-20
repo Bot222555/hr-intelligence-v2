@@ -1,0 +1,65 @@
+name: Deploy HR Intelligence
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: test_hr
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U test -d test_hr"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - run: pip install -r requirements.txt
+      - run: pytest --cov=backend --cov-fail-under=85 -v
+        env:
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/test_hr
+          DATABASE_URL_SYNC: postgresql://test:test@localhost:5432/test_hr
+          REDIS_URL: redis://localhost:6379/0
+          JWT_SECRET: test-secret
+          ENVIRONMENT: test
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1
+        with:
+          host: 3.110.62.153
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          script: |
+            cd /opt/hr-intelligence
+            git pull origin main
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml build
+            docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+            sleep 5
+            curl -sf http://localhost:8000/api/v1/health || exit 1
+            echo "Deploy successful!"

@@ -1,0 +1,1 @@
+"""common — service.py placeholder."""

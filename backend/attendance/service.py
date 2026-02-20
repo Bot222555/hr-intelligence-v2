@@ -1,0 +1,1 @@
+"""attendance — service.py placeholder."""

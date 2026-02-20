@@ -1,0 +1,1 @@
+"""auth — schemas.py placeholder."""

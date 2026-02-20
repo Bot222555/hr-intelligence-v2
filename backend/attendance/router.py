@@ -1,0 +1,1 @@
+"""attendance — router.py placeholder."""

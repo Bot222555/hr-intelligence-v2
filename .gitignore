@@ -7,14 +7,11 @@ __pycache__/
 dist/
 build/
 .eggs/
-venv/
-.venv/
-env/
 
-# Environment
-.env
-.env.local
-.env.production
+# Virtual environments
+.venv/
+venv/
+env/
 
 # IDE
 .vscode/
@@ -23,26 +20,31 @@ env/
 *.swo
 *~
 
-# Testing
+# Environment
+.env
+.env.local
+.env.production
+
+# Database
+*.db
+*.sqlite3
+
+# Docker
+docker-compose.override.yml
+
+# Node/Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+
+# Coverage
 .coverage
 htmlcov/
 .pytest_cache/
 
-# Docker
-pgdata/
-redisdata/
-
-# Frontend
-frontend/node_modules/
-frontend/dist/
-frontend/.cache/
-
 # OS
 .DS_Store
 Thumbs.db
-
-# Logs
-*.log
 
 # Uploads
 /data/uploads/

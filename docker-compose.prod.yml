@@ -1,0 +1,26 @@
+services:
+  api:
+    restart: always
+    environment:
+      ENVIRONMENT: production
+      LOG_LEVEL: info
+    volumes: []  # No bind mounts in production
+
+  db:
+    restart: always
+
+  redis:
+    restart: always
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/hr.cfai.in.conf:/etc/nginx/conf.d/default.conf
+      - ./frontend/dist:/usr/share/nginx/html
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+    depends_on:
+      - api
+    restart: always

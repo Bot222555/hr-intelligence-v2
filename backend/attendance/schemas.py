@@ -1,0 +1,1 @@
+"""attendance — schemas.py placeholder."""

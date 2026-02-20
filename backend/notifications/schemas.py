@@ -1,0 +1,1 @@
+"""notifications — schemas.py placeholder."""

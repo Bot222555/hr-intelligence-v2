@@ -1,0 +1,1 @@
+"""common — schemas.py placeholder."""

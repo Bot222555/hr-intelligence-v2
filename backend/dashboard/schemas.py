@@ -1,0 +1,1 @@
+"""dashboard — schemas.py placeholder."""
