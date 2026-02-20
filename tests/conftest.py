@@ -104,6 +104,19 @@ async def _setup_db():
         await conn.run_sync(Base.metadata.drop_all)
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limiter():
+    """Reset rate limiter storage between tests to prevent cross-test interference."""
+    from backend.common.rate_limit import limiter
+    try:
+        # Clear the in-memory storage used by slowapi/limits
+        if hasattr(limiter, '_storage'):
+            limiter._storage.reset()
+    except Exception:
+        pass
+    yield
+
+
 async def _override_get_db() -> AsyncGenerator[AsyncSession, None]:
     async with TestSessionFactory() as session:
         try:
@@ -270,7 +283,7 @@ def create_refresh_token(
     employee_id: uuid.UUID,
     expired: bool = False,
 ) -> str:
-    """Generate a JWT refresh token for testing."""
+    """Generate a JWT refresh token for testing (with unique jti)."""
     if expired:
         exp = datetime.now(timezone.utc) - timedelta(days=1)
     else:
@@ -278,6 +291,7 @@ def create_refresh_token(
     payload = {
         "sub": str(employee_id),
         "type": "refresh",
+        "jti": uuid.uuid4().hex,
         "exp": exp,
     }
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)

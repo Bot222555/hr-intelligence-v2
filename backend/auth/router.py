@@ -31,6 +31,7 @@ from backend.auth.service import (
 )
 from backend.common.audit import create_audit_entry
 from backend.common.constants import PERMISSIONS, UserRole
+from backend.common.rate_limit import limiter
 from backend.config import settings
 from backend.core_hr.models import Employee
 from backend.database import get_db
@@ -41,6 +42,7 @@ router = APIRouter(prefix="", tags=["auth"])
 # ── POST /google — Google OAuth callback ────────────────────────────
 
 @router.post("/google", response_model=TokenResponse)
+@limiter.limit("5/minute")
 async def google_auth(
     body: GoogleAuthRequest,
     request: Request,
@@ -116,12 +118,20 @@ async def google_auth(
 # ── POST /refresh — Issue new access token ─────────────────────────
 
 @router.post("/refresh", response_model=RefreshResponse)
+@limiter.limit("10/minute")
 async def refresh_token(
     body: RefreshRequest,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
-    new_access, expires_in = await refresh_access_token(db, body.refresh_token)
-    return RefreshResponse(access_token=new_access, expires_in=expires_in)
+    new_access, new_refresh, expires_in = await refresh_access_token(
+        db, body.refresh_token,
+    )
+    return RefreshResponse(
+        access_token=new_access,
+        refresh_token=new_refresh,
+        expires_in=expires_in,
+    )
 
 
 # ── POST /logout — Revoke current session ──────────────────────────

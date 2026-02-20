@@ -28,6 +28,7 @@ class UserSession(Base):
         nullable=False,
     )
     token_hash: Mapped[str] = mapped_column(sa.String(512), nullable=False)
+    refresh_token_hash: Mapped[Optional[str]] = mapped_column(sa.String(512))
     ip_address: Mapped[Optional[str]] = mapped_column(INET)
     user_agent: Mapped[Optional[str]] = mapped_column(sa.Text)
     device_info: Mapped[Optional[dict]] = mapped_column(JSONB)

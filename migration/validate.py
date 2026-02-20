@@ -1,13 +1,35 @@
 """Post-migration validation: count checks, referential integrity, data quality."""
 
+import re
 import sys
 from typing import Tuple
 
+from psycopg2 import sql as pgsql
+
 from migration.config import get_pg_conn, get_sqlite_conn
+
+# Strict identifier pattern to prevent SQL injection in dynamic table names
+_SAFE_IDENT_RE = re.compile(r'^[a-z_][a-z0-9_]*$')
+
+
+def _validate_identifier(name: str) -> str:
+    """Validate a SQL identifier against a strict alphanumeric pattern."""
+    if not _SAFE_IDENT_RE.match(name):
+        raise ValueError(f"Unsafe SQL identifier: {name!r}")
+    return name
 
 
 def _count(cur, table: str) -> int:
-    cur.execute(f"SELECT COUNT(*) FROM {table}")  # noqa: S608
+    """Count rows in a table using safe identifier quoting (psycopg2.sql)."""
+    _validate_identifier(table)
+    cur.execute(pgsql.SQL("SELECT COUNT(*) FROM {}").format(pgsql.Identifier(table)))
+    return cur.fetchone()[0]
+
+
+def _count_sqlite(cur, table: str) -> int:
+    """Count rows in a SQLite table using validated identifier."""
+    _validate_identifier(table)
+    cur.execute(f'SELECT COUNT(*) FROM "{table}"')
     return cur.fetchone()[0]
 
 
@@ -45,7 +67,7 @@ def validate() -> Tuple[int, int]:
     for sq_table, pg_table in count_checks:
         pg_count = _count(pg_cur, pg_table)
         if sq_cur:
-            sq_count = _count(sq_cur, sq_table)
+            sq_count = _count_sqlite(sq_cur, sq_table)
             match = "✓" if pg_count >= sq_count else "✗"
             if pg_count < sq_count:
                 failed += 1

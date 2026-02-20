@@ -1,4 +1,4 @@
-"""Auth module test suite — 15 tests covering OAuth, JWT, sessions, RBAC."""
+"""Auth module test suite — covers OAuth, JWT, sessions, RBAC, token rotation."""
 
 from __future__ import annotations
 
@@ -18,6 +18,26 @@ from tests.conftest import (
     create_access_token,
     create_refresh_token,
 )
+
+
+# ── Helper: create a refresh token with a persisted DB session ──────
+
+async def _store_refresh_session(
+    db, employee_id: uuid.UUID, refresh_token: str,
+) -> UserSession:
+    """Persist a UserSession with the refresh_token_hash for rotation tests."""
+    session = UserSession(
+        id=uuid.uuid4(),
+        employee_id=employee_id,
+        token_hash="placeholder-access-hash",
+        refresh_token_hash=hashlib.sha256(refresh_token.encode()).hexdigest(),
+        expires_at=datetime.now(timezone.utc) + timedelta(days=7),
+        is_revoked=False,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(session)
+    await db.flush()
+    return session
 
 
 # ── Google OAuth ────────────────────────────────────────────────────
@@ -117,11 +137,13 @@ async def test_jwt_expiry_check(client, db, test_employee):
 # ── Refresh ─────────────────────────────────────────────────────────
 
 
-async def test_refresh_token_generates_new_access(
+async def test_refresh_token_generates_new_access_and_refresh(
     client, db, test_employee,
 ):
-    """Valid refresh token → 200 with new access_token."""
+    """Valid refresh token → 200 with new access_token AND new refresh_token."""
     refresh = create_refresh_token(test_employee["id"])
+    await _store_refresh_session(db, test_employee["id"], refresh)
+
     resp = await client.post(
         "/api/v1/auth/refresh",
         json={"refresh_token": refresh},
@@ -129,6 +151,8 @@ async def test_refresh_token_generates_new_access(
     assert resp.status_code == 200
     data = resp.json()
     assert "access_token" in data
+    assert "refresh_token" in data
+    assert data["refresh_token"] != refresh  # Must be a NEW refresh token
     assert data["expires_in"] == settings.JWT_EXPIRY_HOURS * 3600
 
 
@@ -140,6 +164,73 @@ async def test_refresh_expired_token(client, db, test_employee):
         json={"refresh_token": expired_refresh},
     )
     assert resp.status_code == 403
+
+
+async def test_refresh_token_single_use(client, db, test_employee):
+    """A refresh token can only be used once — second use is rejected."""
+    refresh = create_refresh_token(test_employee["id"])
+    await _store_refresh_session(db, test_employee["id"], refresh)
+
+    # First use — should succeed
+    resp1 = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh},
+    )
+    assert resp1.status_code == 200
+
+    # Second use — old token was invalidated, should fail
+    resp2 = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh},
+    )
+    assert resp2.status_code == 403
+    assert "reuse" in resp2.json()["detail"].lower()
+
+
+async def test_refresh_reuse_revokes_all_sessions(client, db, test_employee):
+    """Replaying a consumed refresh token revokes ALL of the user's sessions."""
+    # Create two sessions
+    refresh1 = create_refresh_token(test_employee["id"])
+    await _store_refresh_session(db, test_employee["id"], refresh1)
+
+    access2 = create_access_token(test_employee["id"])
+    access2_hash = hashlib.sha256(access2.encode()).hexdigest()
+    session2 = UserSession(
+        id=uuid.uuid4(),
+        employee_id=test_employee["id"],
+        token_hash=access2_hash,
+        refresh_token_hash="other-session-hash",
+        expires_at=datetime.now(timezone.utc) + timedelta(hours=24),
+        is_revoked=False,
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(session2)
+    await db.flush()
+
+    # First use of refresh1 — consumes it
+    resp1 = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh1},
+    )
+    assert resp1.status_code == 200
+
+    # Replay refresh1 — triggers reuse detection
+    resp2 = await client.post(
+        "/api/v1/auth/refresh",
+        json={"refresh_token": refresh1},
+    )
+    assert resp2.status_code == 403
+
+    # Verify ALL sessions (including session2) are now revoked
+    async with TestSessionFactory() as check_db:
+        result = await check_db.execute(
+            select(UserSession).where(
+                UserSession.employee_id == test_employee["id"],
+                UserSession.is_revoked.is_(False),
+            ),
+        )
+        active_sessions = result.scalars().all()
+        assert len(active_sessions) == 0
 
 
 # ── Logout ──────────────────────────────────────────────────────────

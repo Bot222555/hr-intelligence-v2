@@ -138,6 +138,7 @@ def _create_refresh_token(employee_id: uuid.UUID) -> str:
     payload = {
         "sub": str(employee_id),
         "type": "refresh",
+        "jti": uuid.uuid4().hex,  # Unique ID — ensures each refresh token is distinct
         "exp": datetime.now(timezone.utc) + timedelta(days=7),
     }
     return jwt.encode(payload, settings.JWT_SECRET, algorithm=settings.JWT_ALGORITHM)
@@ -159,6 +160,7 @@ async def find_or_create_session(
     session = UserSession(
         employee_id=employee.id,
         token_hash=_hash_token(access_token),
+        refresh_token_hash=_hash_token(refresh_token),
         ip_address=ip,
         user_agent=user_agent,
         expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.JWT_EXPIRY_HOURS),
@@ -169,13 +171,20 @@ async def find_or_create_session(
     return access_token, refresh_token
 
 
-# ── Refresh ─────────────────────────────────────────────────────────
+# ── Refresh (with token rotation + reuse detection) ─────────────────
 
 async def refresh_access_token(
     db: AsyncSession,
     refresh_token_str: str,
-) -> tuple[str, int]:
-    """Validate refresh token and issue a new access token."""
+) -> tuple[str, str, int]:
+    """Validate refresh token, rotate it, and issue new token pair.
+
+    Returns (new_access_token, new_refresh_token, expires_in).
+
+    Security: each refresh token can only be used once. If a previously
+    used (revoked) refresh token is presented, ALL sessions for that user
+    are revoked as a precaution against token theft.
+    """
     try:
         payload = jwt.decode(
             refresh_token_str,
@@ -188,24 +197,68 @@ async def refresh_access_token(
     if payload.get("type") != "refresh":
         raise ForbiddenException(detail="Invalid token type.")
 
+    # Look up the session by refresh token hash
+    refresh_hash = _hash_token(refresh_token_str)
+    result = await db.execute(
+        select(UserSession).where(
+            UserSession.refresh_token_hash == refresh_hash,
+        ),
+    )
+    session = result.scalars().first()
+
+    if session is None:
+        raise ForbiddenException(detail="Invalid refresh token.")
+
+    if session.is_revoked:
+        # REUSE DETECTED — a previously consumed refresh token was replayed.
+        # Revoke ALL sessions for this user as a security precaution.
+        await _revoke_all_user_sessions(db, session.employee_id)
+        await db.commit()  # Persist revocations BEFORE raising (avoid rollback)
+        raise ForbiddenException(
+            detail="Refresh token reuse detected. All sessions revoked for security.",
+        )
+
+    # Invalidate the old session (consume the refresh token)
+    session.is_revoked = True
+    await db.flush()
+
+    # Issue new token pair
     employee_id = uuid.UUID(payload["sub"])
     employee = await _get_active_employee(db, employee_id)
     role = await get_highest_role(db, employee.id)
     access_token, expires_in = _create_access_token(employee.id, role)
+    new_refresh_token = _create_refresh_token(employee.id)
 
-    # Persist new session row
-    session = UserSession(
+    # Persist new session with both token hashes
+    new_session = UserSession(
         employee_id=employee.id,
         token_hash=_hash_token(access_token),
+        refresh_token_hash=_hash_token(new_refresh_token),
         expires_at=datetime.now(timezone.utc) + timedelta(hours=settings.JWT_EXPIRY_HOURS),
     )
-    db.add(session)
+    db.add(new_session)
     await db.flush()
 
-    return access_token, expires_in
+    return access_token, new_refresh_token, expires_in
 
 
 # ── Revoke ──────────────────────────────────────────────────────────
+
+async def _revoke_all_user_sessions(
+    db: AsyncSession,
+    employee_id: uuid.UUID,
+) -> None:
+    """Revoke ALL active sessions for an employee (security measure for token reuse)."""
+    result = await db.execute(
+        select(UserSession).where(
+            UserSession.employee_id == employee_id,
+            UserSession.is_revoked.is_(False),
+        ),
+    )
+    for session in result.scalars().all():
+        session.is_revoked = True
+    await db.flush()
+
 
 async def revoke_session(db: AsyncSession, token_hash: str) -> None:
     """Mark a session as revoked by its token hash."""

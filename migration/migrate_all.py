@@ -16,7 +16,11 @@ from migration.config import SQLITE_PATH, get_sqlite_conn
 
 def run_dry(sqlite_path: str):
     """Dry-run: show SQLite record counts without touching PostgreSQL."""
+    import re
     import sqlite3
+
+    # Allowlist of valid table names for safe querying
+    _SAFE_IDENT_RE = re.compile(r'^[a-z_][a-z0-9_]*$')
 
     print("\n🔍 DRY RUN — reading SQLite only, no writes\n")
     conn = sqlite3.connect(sqlite_path)
@@ -25,8 +29,10 @@ def run_dry(sqlite_path: str):
     tables = ["departments", "employees", "attendance",
               "leave_balances", "leave_requests"]
     for t in tables:
+        if not _SAFE_IDENT_RE.match(t):
+            raise ValueError(f"Unsafe table identifier: {t!r}")
         try:
-            cur.execute(f"SELECT COUNT(*) FROM {t}")  # noqa: S608
+            cur.execute(f'SELECT COUNT(*) FROM "{t}"')
             count = cur.fetchone()[0]
             print(f"  {t:25s}  {count:>6d} rows")
         except sqlite3.OperationalError:

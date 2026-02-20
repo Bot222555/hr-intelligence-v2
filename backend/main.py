@@ -4,10 +4,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from backend.attendance.router import router as attendance_router
 from backend.auth.router import router as auth_router
 from backend.common.exceptions import register_exception_handlers
+from backend.common.rate_limit import limiter
 from backend.config import settings
 from backend.dashboard.router import router as dashboard_router
 from backend.core_hr.router import (
@@ -44,6 +47,10 @@ def create_app() -> FastAPI:
 
     # Exception handlers (RFC 7807)
     register_exception_handlers(app)
+
+    # Rate limiting (slowapi)
+    app.state.limiter = limiter
+    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
     # CORS
     app.add_middleware(

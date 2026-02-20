@@ -5,6 +5,8 @@ Revises:
 Create Date: 2026-02-20 15:07:00.000000+05:30
 """
 
+import re
+
 from alembic import op
 import sqlalchemy as sa
 
@@ -18,6 +20,9 @@ depends_on = None
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
+# Strict pattern for SQL identifiers — prevents injection in DDL statements
+_SAFE_IDENT_RE = re.compile(r'^[a-z_][a-z0-9_]*$')
 
 ENUM_TYPES: list[tuple[str, list[str]]] = [
     ("employment_status", ["active", "notice_period", "relieved", "absconding"]),
@@ -52,13 +57,27 @@ ENUM_TYPES: list[tuple[str, list[str]]] = [
 ]
 
 
+def _validate_identifier(name: str) -> str:
+    """Validate a SQL identifier against a strict alphanumeric pattern."""
+    if not _SAFE_IDENT_RE.match(name):
+        raise ValueError(f"Unsafe SQL identifier: {name!r}")
+    return name
+
+
 def _create_enum(name: str, values: list[str]) -> None:
-    vals = ", ".join(f"'{v}'" for v in values)
-    op.execute(f"CREATE TYPE {name} AS ENUM ({vals})")
+    """Create a PostgreSQL ENUM type safely via SQLAlchemy (no string interpolation)."""
+    sa.Enum(*values, name=name).create(op.get_bind(), checkfirst=True)
 
 
 def _drop_enum(name: str) -> None:
-    op.execute(f"DROP TYPE IF EXISTS {name}")
+    """Drop a PostgreSQL ENUM type safely via SQLAlchemy (no string interpolation)."""
+    sa.Enum(name=name).drop(op.get_bind(), checkfirst=True)
+
+
+def _safe_drop_table(name: str) -> None:
+    """Drop a table with CASCADE using a validated identifier."""
+    _validate_identifier(name)
+    op.execute(sa.text(f'DROP TABLE IF EXISTS "{name}" CASCADE'))
 
 
 # ---------------------------------------------------------------------------
@@ -151,19 +170,21 @@ def upgrade() -> None:
     # ── 4. user_sessions ──────────────────────────────────────────────────
     op.execute("""
         CREATE TABLE user_sessions (
-            id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            employee_id  UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
-            token_hash   VARCHAR(512) NOT NULL,
-            ip_address   INET,
-            user_agent   TEXT,
-            device_info  JSONB,
-            expires_at   TIMESTAMPTZ NOT NULL,
-            is_revoked   BOOLEAN DEFAULT FALSE,
-            created_at   TIMESTAMPTZ DEFAULT NOW()
+            id                 UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            employee_id        UUID NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
+            token_hash         VARCHAR(512) NOT NULL,
+            refresh_token_hash VARCHAR(512),
+            ip_address         INET,
+            user_agent         TEXT,
+            device_info        JSONB,
+            expires_at         TIMESTAMPTZ NOT NULL,
+            is_revoked         BOOLEAN DEFAULT FALSE,
+            created_at         TIMESTAMPTZ DEFAULT NOW()
         )
     """)
     op.execute("CREATE INDEX idx_user_sessions_employee ON user_sessions(employee_id)")
     op.execute("CREATE INDEX idx_user_sessions_token    ON user_sessions(token_hash)")
+    op.execute("CREATE INDEX idx_user_sessions_refresh  ON user_sessions(refresh_token_hash)")
     op.execute("CREATE INDEX idx_user_sessions_expires  ON user_sessions(expires_at)")
 
     # ── 5. role_assignments ───────────────────────────────────────────────
@@ -509,7 +530,7 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    # Drop tables in reverse dependency order
+    # Drop tables in reverse dependency order (using validated identifiers)
     tables = [
         "app_settings",
         "audit_trail",
@@ -530,20 +551,20 @@ def downgrade() -> None:
         "user_sessions",
     ]
     for t in tables:
-        op.execute(f"DROP TABLE IF EXISTS {t} CASCADE")
+        _safe_drop_table(t)
 
     # Drop deferred FK before dropping employees / departments
     op.execute(
-        "ALTER TABLE departments DROP CONSTRAINT IF EXISTS fk_dept_head"
+        sa.text("ALTER TABLE departments DROP CONSTRAINT IF EXISTS fk_dept_head")
     )
-    op.execute("DROP TABLE IF EXISTS employees CASCADE")
-    op.execute("DROP TABLE IF EXISTS departments CASCADE")
-    op.execute("DROP TABLE IF EXISTS locations CASCADE")
+    _safe_drop_table("employees")
+    _safe_drop_table("departments")
+    _safe_drop_table("locations")
 
-    # Drop enum types
+    # Drop enum types (via SQLAlchemy — no string interpolation)
     for name, _ in reversed(ENUM_TYPES):
         _drop_enum(name)
 
     # Drop extensions
-    op.execute('DROP EXTENSION IF EXISTS "pg_trgm"')
-    op.execute('DROP EXTENSION IF EXISTS "uuid-ossp"')
+    op.execute(sa.text('DROP EXTENSION IF EXISTS "pg_trgm"'))
+    op.execute(sa.text('DROP EXTENSION IF EXISTS "uuid-ossp"'))
