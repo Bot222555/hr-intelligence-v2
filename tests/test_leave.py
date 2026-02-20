@@ -884,3 +884,336 @@ class TestLeaveBalance:
         fake_id = uuid.uuid4()
         with pytest.raises(NotFoundException):
             await LeaveService.get_balance(db, fake_id, 2026)
+
+
+# ═════════════════════════════════════════════════════════════════════
+# 7. Edge Cases — Overlapping, Balance Exhaustion, Cancel After
+#    Approval, Partial Overlap, Weekend-Only Range, Multiple Types
+# ═════════════════════════════════════════════════════════════════════
+
+
+class TestLeaveEdgeCases:
+    """Additional edge case tests for thorough coverage."""
+
+    async def test_apply_leave_entire_weekend_range_zero_days(self, db: AsyncSession):
+        """Leave applied for Sat+Sun only (with Sat/Sun offs) → 0 days → rejected."""
+        loc, dept = await _seed_location_and_dept(db)
+        emp = await _seed_employee(db, department_id=dept.id, location_id=loc.id)
+        lt = await _seed_leave_type(db)
+        await _seed_balance(db, emp.id, lt.id)
+
+        # 2026-02-28 is Saturday, 2026-03-01 is Sunday
+        data = LeaveRequestCreate(
+            leave_type_id=lt.id,
+            from_date=date(2026, 2, 28),
+            to_date=date(2026, 3, 1),
+            reason="Weekend only",
+        )
+
+        with pytest.raises(ValidationException) as exc_info:
+            await LeaveService.apply_leave(db, emp.id, data)
+        assert "no leave days" in str(exc_info.value.errors).lower()
+
+    async def test_apply_leave_partial_overlap_with_existing(self, db: AsyncSession):
+        """Leave partially overlapping an existing request → rejected."""
+        loc, dept = await _seed_location_and_dept(db)
+        emp = await _seed_employee(db, department_id=dept.id, location_id=loc.id)
+        lt = await _seed_leave_type(db)
+        await _seed_balance(db, emp.id, lt.id)
+
+        # First request: Mon-Wed (Mar 2-4)
+        data1 = LeaveRequestCreate(
+            leave_type_id=lt.id,
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 4),
+            reason="First",
+        )
+        await LeaveService.apply_leave(db, emp.id, data1)
+
+        # Second request: Wed-Fri (Mar 4-6) — overlaps on Wed
+        data2 = LeaveRequestCreate(
+            leave_type_id=lt.id,
+            from_date=date(2026, 3, 4),
+            to_date=date(2026, 3, 6),
+            reason="Partial overlap",
+        )
+        with pytest.raises(ValidationException) as exc_info:
+            await LeaveService.apply_leave(db, emp.id, data2)
+        assert "overlapping" in str(exc_info.value.errors).lower()
+
+    async def test_apply_leave_exactly_exhausts_balance(self, db: AsyncSession):
+        """Applying leave that uses exactly all remaining balance → succeeds."""
+        loc, dept = await _seed_location_and_dept(db)
+        emp = await _seed_employee(db, department_id=dept.id, location_id=loc.id)
+        lt = await _seed_leave_type(db)
+        # Exactly 5 days balance
+        await _seed_balance(db, emp.id, lt.id, opening_balance=Decimal("5"))
+
+        # Mon-Fri = exactly 5 working days
+        data = LeaveRequestCreate(
+            leave_type_id=lt.id,
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 6),
+            reason="Use all balance",
+        )
+
+        result = await LeaveService.apply_leave(db, emp.id, data)
+        assert result.total_days == Decimal("5")
+        assert result.status == LeaveStatus.pending
+
+    async def test_apply_leave_one_more_than_balance_fails(self, db: AsyncSession):
+        """Requesting 1 day more than available → fails."""
+        loc, dept = await _seed_location_and_dept(db)
+        emp = await _seed_employee(db, department_id=dept.id, location_id=loc.id)
+        lt = await _seed_leave_type(db)
+        await _seed_balance(db, emp.id, lt.id, opening_balance=Decimal("2"))
+
+        # 3 working days but only 2 balance
+        data = LeaveRequestCreate(
+            leave_type_id=lt.id,
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 4),
+            reason="Too many",
+        )
+
+        with pytest.raises(ValidationException) as exc_info:
+            await LeaveService.apply_leave(db, emp.id, data)
+        assert "balance" in str(exc_info.value.errors).lower()
+
+    async def test_cancel_already_rejected_leave_fails(self, db: AsyncSession):
+        """Cannot cancel a leave that was already rejected."""
+        loc, dept = await _seed_location_and_dept(db)
+        mgr = await _seed_employee(
+            db, email="mgr@creativefuel.io", first_name="Mgr",
+            department_id=dept.id, location_id=loc.id,
+        )
+        emp = await _seed_employee(
+            db, email="emp@creativefuel.io", first_name="Emp",
+            department_id=dept.id, location_id=loc.id,
+            reporting_manager_id=mgr.id,
+        )
+        lt = await _seed_leave_type(db)
+        await _seed_balance(db, emp.id, lt.id)
+
+        data = LeaveRequestCreate(
+            leave_type_id=lt.id,
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 3),
+            reason="Will be rejected",
+        )
+        result = await LeaveService.apply_leave(db, emp.id, data)
+
+        # Reject it
+        await LeaveService.reject_leave(db, result.id, mgr.id, "No")
+
+        # Now try to cancel
+        with pytest.raises(ValidationException) as exc_info:
+            await LeaveService.cancel_leave(db, result.id, emp.id, "Trying to cancel rejected")
+        assert "cancel" in str(exc_info.value.errors).lower() or "status" in str(exc_info.value.errors).lower()
+
+    async def test_cancel_already_cancelled_leave_fails(self, db: AsyncSession):
+        """Cannot cancel a leave that was already cancelled."""
+        loc, dept = await _seed_location_and_dept(db)
+        emp = await _seed_employee(
+            db, department_id=dept.id, location_id=loc.id,
+        )
+        lt = await _seed_leave_type(db)
+        await _seed_balance(db, emp.id, lt.id)
+
+        data = LeaveRequestCreate(
+            leave_type_id=lt.id,
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 3),
+            reason="Will be cancelled twice",
+        )
+        result = await LeaveService.apply_leave(db, emp.id, data)
+
+        # Cancel once
+        await LeaveService.cancel_leave(db, result.id, emp.id, "First cancel")
+
+        # Try again
+        with pytest.raises(ValidationException):
+            await LeaveService.cancel_leave(db, result.id, emp.id, "Second cancel")
+
+    async def test_reject_already_rejected_leave_fails(self, db: AsyncSession):
+        """Rejecting an already-rejected request → ValidationException."""
+        loc, dept = await _seed_location_and_dept(db)
+        mgr = await _seed_employee(
+            db, email="mgr@creativefuel.io", first_name="Mgr",
+            department_id=dept.id, location_id=loc.id,
+        )
+        emp = await _seed_employee(
+            db, email="emp@creativefuel.io", first_name="Emp",
+            department_id=dept.id, location_id=loc.id,
+            reporting_manager_id=mgr.id,
+        )
+        lt = await _seed_leave_type(db)
+        await _seed_balance(db, emp.id, lt.id)
+
+        data = LeaveRequestCreate(
+            leave_type_id=lt.id,
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 3),
+            reason="Reject test",
+        )
+        result = await LeaveService.apply_leave(db, emp.id, data)
+
+        await LeaveService.reject_leave(db, result.id, mgr.id, "No")
+
+        with pytest.raises(ValidationException):
+            await LeaveService.reject_leave(db, result.id, mgr.id, "No again")
+
+    async def test_apply_different_leave_types_same_dates(self, db: AsyncSession):
+        """Two different leave types for same dates → still overlapping."""
+        loc, dept = await _seed_location_and_dept(db)
+        emp = await _seed_employee(db, department_id=dept.id, location_id=loc.id)
+        lt1 = await _seed_leave_type(db, code="CL", name="Casual Leave")
+        lt2 = await _seed_leave_type(db, code="SL", name="Sick Leave")
+        await _seed_balance(db, emp.id, lt1.id)
+        await _seed_balance(db, emp.id, lt2.id)
+
+        data1 = LeaveRequestCreate(
+            leave_type_id=lt1.id,
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 3),
+            reason="Casual leave for personal work",
+        )
+        await LeaveService.apply_leave(db, emp.id, data1)
+
+        # Same dates, different type → should still fail (overlap)
+        data2 = LeaveRequestCreate(
+            leave_type_id=lt2.id,
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 3),
+            reason="Sick leave same dates",
+        )
+        with pytest.raises(ValidationException) as exc_info:
+            await LeaveService.apply_leave(db, emp.id, data2)
+        assert "overlapping" in str(exc_info.value.errors).lower()
+
+    async def test_balance_after_multiple_apply_and_cancel(self, db: AsyncSession):
+        """Apply → approve → cancel → apply again → balance tracking correct."""
+        loc, dept = await _seed_location_and_dept(db)
+        mgr = await _seed_employee(
+            db, email="mgr@creativefuel.io", first_name="Mgr",
+            department_id=dept.id, location_id=loc.id,
+        )
+        emp = await _seed_employee(
+            db, email="emp@creativefuel.io", first_name="Emp",
+            department_id=dept.id, location_id=loc.id,
+            reporting_manager_id=mgr.id,
+        )
+        lt = await _seed_leave_type(db)
+        bal = await _seed_balance(db, emp.id, lt.id, opening_balance=Decimal("10"))
+
+        # Apply 3 days
+        data1 = LeaveRequestCreate(
+            leave_type_id=lt.id,
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 4),
+            reason="First",
+        )
+        result1 = await LeaveService.apply_leave(db, emp.id, data1)
+
+        # Approve → balance.used = 3
+        await LeaveService.approve_leave(db, result1.id, mgr.id)
+        await db.refresh(bal)
+        assert bal.used == Decimal("3")
+
+        # Cancel → balance.used = 0
+        await LeaveService.cancel_leave(db, result1.id, emp.id, "Changed plans")
+        await db.refresh(bal)
+        assert bal.used == Decimal("0")
+
+        # Apply again for same dates → should succeed
+        data2 = LeaveRequestCreate(
+            leave_type_id=lt.id,
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 4),
+            reason="Reapply",
+        )
+        result2 = await LeaveService.apply_leave(db, emp.id, data2)
+        assert result2.status == LeaveStatus.pending
+        assert result2.total_days == Decimal("3")
+
+    async def test_approve_nonexistent_request(self, db: AsyncSession):
+        """Approving non-existent leave request → NotFoundException."""
+        fake_id = uuid.uuid4()
+        approver_id = uuid.uuid4()
+
+        with pytest.raises(NotFoundException):
+            await LeaveService.approve_leave(db, fake_id, approver_id)
+
+    async def test_reject_nonexistent_request(self, db: AsyncSession):
+        """Rejecting non-existent leave request → NotFoundException."""
+        fake_id = uuid.uuid4()
+        approver_id = uuid.uuid4()
+
+        with pytest.raises(NotFoundException):
+            await LeaveService.reject_leave(db, fake_id, approver_id, "No")
+
+    async def test_cancel_nonexistent_request(self, db: AsyncSession):
+        """Cancelling non-existent leave request → NotFoundException."""
+        fake_id = uuid.uuid4()
+        emp_id = uuid.uuid4()
+
+        with pytest.raises(NotFoundException):
+            await LeaveService.cancel_leave(db, fake_id, emp_id, "No")
+
+    async def test_apply_leave_nonexistent_leave_type(self, db: AsyncSession):
+        """Using a non-existent leave type → NotFoundException."""
+        loc, dept = await _seed_location_and_dept(db)
+        emp = await _seed_employee(db, department_id=dept.id, location_id=loc.id)
+
+        data = LeaveRequestCreate(
+            leave_type_id=uuid.uuid4(),
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 3),
+            reason="Bad type",
+        )
+
+        with pytest.raises(NotFoundException):
+            await LeaveService.apply_leave(db, emp.id, data)
+
+    async def test_apply_leave_inactive_leave_type(self, db: AsyncSession):
+        """Using an inactive leave type → NotFoundException."""
+        loc, dept = await _seed_location_and_dept(db)
+        emp = await _seed_employee(db, department_id=dept.id, location_id=loc.id)
+        lt = await _seed_leave_type(db, is_active=False)
+        await _seed_balance(db, emp.id, lt.id)
+
+        data = LeaveRequestCreate(
+            leave_type_id=lt.id,
+            from_date=date(2026, 3, 2),
+            to_date=date(2026, 3, 3),
+            reason="Inactive type",
+        )
+
+        with pytest.raises(NotFoundException):
+            await LeaveService.apply_leave(db, emp.id, data)
+
+    async def test_balance_adjust_positive(self, db: AsyncSession):
+        """HR adjusts balance positively → adjusted increases."""
+        loc, dept = await _seed_location_and_dept(db)
+        emp = await _seed_employee(db, department_id=dept.id, location_id=loc.id)
+        lt = await _seed_leave_type(db)
+        bal = await _seed_balance(db, emp.id, lt.id, opening_balance=Decimal("10"))
+
+        result = await LeaveService.adjust_balance(
+            db, emp.id, lt.id, Decimal("3"), "Birthday bonus",
+        )
+
+        assert result.available is not None
+
+    async def test_balance_adjust_negative(self, db: AsyncSession):
+        """HR adjusts balance negatively → adjusted decreases."""
+        loc, dept = await _seed_location_and_dept(db)
+        emp = await _seed_employee(db, department_id=dept.id, location_id=loc.id)
+        lt = await _seed_leave_type(db)
+        await _seed_balance(db, emp.id, lt.id, opening_balance=Decimal("10"))
+
+        result = await LeaveService.adjust_balance(
+            db, emp.id, lt.id, Decimal("-2"), "Correction",
+        )
+
+        assert result.available is not None

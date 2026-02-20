@@ -764,3 +764,317 @@ async def test_calculate_hours_half_day():
     assert total_h == 5.0
     assert effective_h == 4.0
     assert status == AttendanceStatus.half_day
+
+
+# ═════════════════════════════════════════════════════════════════════
+# 10. EDGE CASES — Overlapping Check-in, Future Dates, Timezone,
+#     Bulk Operations, Multiple Clock Entries
+# ═════════════════════════════════════════════════════════════════════
+
+
+async def test_clock_in_sets_source_field(db, test_employee):
+    """Clock-in records the source field (web/biometric/etc)."""
+    resp = await AttendanceService.clock_in(db, test_employee["id"], source="biometric")
+
+    record = (await db.execute(
+        select(AttendanceRecord).where(
+            AttendanceRecord.employee_id == test_employee["id"]
+        )
+    )).scalars().first()
+    assert record.source == "biometric"
+
+
+async def test_clock_entry_references_attendance_record(db, test_employee):
+    """ClockEntry correctly references its parent AttendanceRecord."""
+    resp = await AttendanceService.clock_in(db, test_employee["id"])
+
+    entry = (await db.execute(
+        select(ClockEntry).where(
+            ClockEntry.employee_id == test_employee["id"]
+        )
+    )).scalars().first()
+    assert entry is not None
+    assert entry.attendance_record_id == resp.attendance_id
+
+
+async def test_regularization_far_past_date(db, test_employee):
+    """Regularization for a date many months ago still works."""
+    old_date = date.today() - timedelta(days=60)
+
+    reg = await AttendanceService.submit_regularization(
+        db,
+        test_employee["id"],
+        target_date=old_date,
+        requested_status=AttendanceStatus.present,
+        reason="Missed clock-in two months ago.",
+    )
+    assert reg.status == RegularizationStatus.pending
+
+
+async def test_regularization_future_date_rejected(db, test_employee):
+    """Regularization for a future date should raise ValidationException."""
+    from backend.common.exceptions import ValidationException
+    import pytest
+
+    future = date.today() + timedelta(days=5)
+    with pytest.raises(ValidationException):
+        await AttendanceService.submit_regularization(
+            db,
+            test_employee["id"],
+            target_date=future,
+            requested_status=AttendanceStatus.present,
+            reason="Future date regularization",
+        )
+
+
+async def test_multiple_clock_entries_same_day(db, test_employee):
+    """Pre-seeding clock in/out, then clocking in again creates a second entry."""
+    now = datetime.now(timezone.utc)
+    today = now.date()
+    clock_in_time = now - timedelta(hours=4)
+
+    # Pre-seed a completed session (clock-in + clock-out)
+    att = AttendanceRecord(
+        employee_id=test_employee["id"],
+        date=today,
+        status=AttendanceStatus.present,
+        first_clock_in=clock_in_time,
+        last_clock_out=clock_in_time + timedelta(hours=3),
+        total_work_minutes=180,
+        effective_work_minutes=180,
+        source="test",
+    )
+    db.add(att)
+    await db.flush()
+
+    entry1 = ClockEntry(
+        employee_id=test_employee["id"],
+        attendance_record_id=att.id,
+        clock_in=clock_in_time,
+        clock_out=clock_in_time + timedelta(hours=3),
+        source="test",
+    )
+    db.add(entry1)
+    await db.flush()
+
+    # Second clock-in
+    resp = await AttendanceService.clock_in(db, test_employee["id"])
+    assert resp.attendance_id is not None
+
+    entries = (await db.execute(
+        select(ClockEntry).where(
+            ClockEntry.employee_id == test_employee["id"]
+        )
+    )).scalars().all()
+    assert len(entries) >= 2
+
+
+async def test_attendance_record_preserves_date(db, test_employee):
+    """AttendanceRecord.date matches the clock-in date."""
+    resp = await AttendanceService.clock_in(db, test_employee["id"])
+
+    record = (await db.execute(
+        select(AttendanceRecord).where(AttendanceRecord.id == resp.attendance_id)
+    )).scalars().first()
+    assert record.date == date.today()
+
+
+async def test_clock_in_creates_record_for_new_day(db, test_employee):
+    """Clock-in on a new day creates a fresh AttendanceRecord."""
+    resp = await AttendanceService.clock_in(db, test_employee["id"])
+
+    records = (await db.execute(
+        select(AttendanceRecord).where(
+            AttendanceRecord.employee_id == test_employee["id"]
+        )
+    )).scalars().all()
+    assert len(records) == 1
+    assert records[0].date == date.today()
+
+
+async def test_clock_out_without_record_raises_validation(db, test_employee):
+    """Clock-out when no record exists for today → ValidationException."""
+    from backend.common.exceptions import ValidationException, NotFoundException
+    import pytest
+
+    with pytest.raises((ValidationException, NotFoundException)):
+        await AttendanceService.clock_out(db, test_employee["id"])
+
+
+async def test_calculate_hours_overtime():
+    """Working 11 hours → 2 hours overtime."""
+    shift = ShiftPolicy(
+        name="Test",
+        start_time=time(9, 0),
+        end_time=time(18, 0),
+        grace_minutes=15,
+        half_day_minutes=240,
+        full_day_minutes=480,
+    )
+    first_in = datetime(2026, 2, 20, 8, 0, tzinfo=timezone.utc)
+    last_out = datetime(2026, 2, 20, 19, 0, tzinfo=timezone.utc)
+
+    total_h, effective_h, overtime_h, status = AttendanceService._calculate_hours(
+        first_in, last_out, shift,
+    )
+
+    assert total_h == 11.0
+    assert effective_h == 10.0  # 11 - 1 hour lunch
+    assert overtime_h == 2.0   # 10 effective - 8 standard = 2 overtime
+    assert status == AttendanceStatus.present
+
+
+async def test_calculate_hours_very_short_day():
+    """Working only 2 hours → less than half_day_minutes → absent."""
+    shift = ShiftPolicy(
+        name="Test",
+        start_time=time(9, 0),
+        end_time=time(18, 0),
+        grace_minutes=15,
+        half_day_minutes=240,
+        full_day_minutes=480,
+    )
+    first_in = datetime(2026, 2, 20, 9, 0, tzinfo=timezone.utc)
+    last_out = datetime(2026, 2, 20, 11, 0, tzinfo=timezone.utc)
+
+    total_h, effective_h, overtime_h, status = AttendanceService._calculate_hours(
+        first_in, last_out, shift,
+    )
+
+    assert total_h == 2.0
+    # 1 hour lunch is always deducted by the service
+    assert effective_h == 1.0
+    # With only 60 effective minutes (< 240), status should be absent
+    assert status == AttendanceStatus.absent
+
+
+async def test_night_shift_hours_calculation():
+    """Night shift crossing midnight — total 8h, effective 7h (minus lunch)."""
+    shift = ShiftPolicy(
+        name="Night Shift",
+        start_time=time(22, 0),
+        end_time=time(6, 0),
+        grace_minutes=15,
+        half_day_minutes=240,
+        full_day_minutes=480,
+        is_night_shift=True,
+    )
+    # 10 PM to 7 AM = 9 hours → 8 effective → full day
+    first_in = datetime(2026, 2, 20, 22, 0, tzinfo=timezone.utc)
+    last_out = datetime(2026, 2, 21, 7, 0, tzinfo=timezone.utc)
+
+    total_h, effective_h, overtime_h, status = AttendanceService._calculate_hours(
+        first_in, last_out, shift,
+    )
+
+    assert total_h == 9.0
+    assert effective_h == 8.0  # 9 - 1 lunch
+    assert status == AttendanceStatus.present
+
+
+async def test_today_attendance_summary_counts(db, test_employee, test_location, test_department):
+    """Today attendance summary accurately counts present/absent/late."""
+    # Create additional employees
+    for i in range(3):
+        emp_data = _make_employee(
+            email=f"extra{i}@creativefuel.io",
+            first_name=f"Extra{i}",
+            department_id=test_department["id"],
+            location_id=test_location["id"],
+        )
+        db.add(Employee(**emp_data))
+    await db.flush()
+
+    # Clock in the test_employee
+    await AttendanceService.clock_in(db, test_employee["id"])
+
+    result = await AttendanceService.get_today_attendance(db)
+
+    assert result.summary.total_employees >= 4
+    assert result.summary.present >= 1
+    assert result.summary.absent >= 3  # the 3 extras didn't clock in
+
+
+async def test_holiday_optional_flag(db, test_location):
+    """Optional holidays are included in listing but flagged correctly."""
+    calendar = HolidayCalendar(
+        name="India 2026 Optional",
+        year=2026,
+        location_id=test_location["id"],
+        is_active=True,
+    )
+    db.add(calendar)
+    await db.flush()
+
+    mandatory = Holiday(
+        calendar_id=calendar.id,
+        name="Republic Day",
+        date=date(2026, 1, 26),
+        is_optional=False,
+    )
+    optional = Holiday(
+        calendar_id=calendar.id,
+        name="Holi",
+        date=date(2026, 3, 14),
+        is_optional=True,
+    )
+    db.add(mandatory)
+    db.add(optional)
+    await db.flush()
+
+    result = await AttendanceService.get_holidays(db, year=2026)
+    names = {h.name: h.is_optional for h in result}
+    assert names["Republic Day"] is False
+    assert names["Holi"] is True
+
+
+async def test_weekly_off_policy_custom_days(db, test_employee):
+    """Custom weekly off policy (e.g., Friday + Saturday) works correctly."""
+    shift = await _create_shift(db)
+    weekly_off = await _create_weekly_off(
+        db,
+        name="Fri-Sat Off",
+        days={"friday": True, "saturday": True},
+    )
+    await _assign_shift(db, test_employee["id"], shift.id, weekly_off.id)
+
+    from backend.leave.service import LeaveService as LS
+    offs = await LS._get_weekly_offs(db, test_employee["id"], date.today())
+    assert offs == {4, 5}  # Friday=4, Saturday=5
+
+
+async def test_shift_assignment_effective_date_filtering(db, test_employee):
+    """Only the shift assignment effective for the target date is used."""
+    shift1 = await _create_shift(db, name="Old Shift", start=time(8, 0))
+    shift2 = await _create_shift(db, name="New Shift", start=time(10, 0))
+    weekly_off = await _create_weekly_off(db)
+
+    # Old assignment (past)
+    await _assign_shift(
+        db, test_employee["id"], shift1.id, weekly_off.id,
+        effective_from=date(2024, 1, 1),
+    )
+
+    # New assignment (recent, should take precedence)
+    recent = EmployeeShiftAssignment(
+        employee_id=test_employee["id"],
+        shift_policy_id=shift2.id,
+        weekly_off_policy_id=weekly_off.id,
+        effective_from=date(2025, 6, 1),
+    )
+    db.add(recent)
+    await db.flush()
+
+    # Query assignments for today (should pick the newer one)
+    today = date.today()
+    result = await db.execute(
+        select(EmployeeShiftAssignment)
+        .where(
+            EmployeeShiftAssignment.employee_id == test_employee["id"],
+            EmployeeShiftAssignment.effective_from <= today,
+        )
+        .order_by(EmployeeShiftAssignment.effective_from.desc())
+        .limit(1)
+    )
+    assignment = result.scalars().first()
+    assert assignment.shift_policy_id == shift2.id
