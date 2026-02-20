@@ -3,7 +3,6 @@
 All endpoints require authentication. Manager/HR-specific endpoints enforce role checks.
 """
 
-from __future__ import annotations
 
 import uuid
 from datetime import date, datetime

@@ -6,7 +6,6 @@ Naming conventions:
   - *Summary / *ListItem → compact read representations
 """
 
-from __future__ import annotations
 
 import uuid
 from datetime import date, datetime

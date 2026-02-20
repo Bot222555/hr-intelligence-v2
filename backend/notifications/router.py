@@ -1,6 +1,5 @@
 """Notification endpoints — list, mark read, unread count."""
 
-from __future__ import annotations
 
 import uuid
 from typing import Optional
