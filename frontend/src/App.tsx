@@ -7,6 +7,7 @@ import { LoginPage } from "@/pages/LoginPage";
 import { AuthCallbackPage } from "@/pages/AuthCallbackPage";
 import { DashboardPage } from "@/pages/DashboardPage";
 import { EmployeesPage } from "@/pages/EmployeesPage";
+import { EmployeeProfilePage } from "@/pages/EmployeeProfilePage";
 import { AttendancePage } from "@/pages/AttendancePage";
 import { TeamAttendancePage } from "@/pages/TeamAttendancePage";
 import { RegularizationPage } from "@/pages/RegularizationPage";
@@ -47,6 +48,7 @@ export default function App() {
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<DashboardPage />} />
                 <Route path="employees" element={<EmployeesPage />} />
+                <Route path="employees/:employeeId" element={<EmployeeProfilePage />} />
                 <Route path="org-chart" element={<OrgChartPage />} />
                 <Route path="departments" element={<DepartmentsPage />} />
                 <Route path="departments/:departmentId" element={<DepartmentDetailPage />} />

@@ -10,6 +10,7 @@
  */
 
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
   Search,
@@ -112,6 +113,8 @@ export function EmployeesPage() {
   const departments = departmentsQuery.data?.data ?? [];
   const locations = locationsQuery.data?.data ?? [];
   const hasActiveFilters = !!debouncedSearch || !!departmentId || !!locationId;
+
+  const navigate = useNavigate();
 
   const clearFilters = useCallback(() => {
     setSearch("");
@@ -276,7 +279,7 @@ export function EmployeesPage() {
         /* ── Grid View ──────────────────────────────────────────── */
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {employees.map((emp) => (
-            <EmployeeCard key={emp.id} employee={emp} />
+            <EmployeeCard key={emp.id} employee={emp} onClick={() => navigate(`/employees/${emp.id}`)} />
           ))}
         </div>
       ) : (
@@ -308,7 +311,7 @@ export function EmployeesPage() {
               </thead>
               <tbody>
                 {employees.map((emp) => (
-                  <EmployeeRow key={emp.id} employee={emp} />
+                  <EmployeeRow key={emp.id} employee={emp} onClick={() => navigate(`/employees/${emp.id}`)} />
                 ))}
               </tbody>
             </table>
@@ -386,8 +389,10 @@ export function EmployeesPage() {
 
 function EmployeeCard({
   employee,
+  onClick,
 }: {
   employee: employeesApi.EmployeeListItem;
+  onClick?: () => void;
 }) {
   const displayName =
     employee.display_name || `${employee.first_name} ${employee.last_name}`;
@@ -395,7 +400,7 @@ function EmployeeCard({
     STATUS_STYLES.active;
 
   return (
-    <Card className="group py-0 transition-shadow hover:shadow-md">
+    <Card className="group py-0 transition-shadow hover:shadow-md cursor-pointer" onClick={onClick}>
       <CardContent className="p-5">
         <div className="flex flex-col items-center text-center">
           {/* Avatar */}
@@ -461,8 +466,10 @@ function EmployeeCard({
 
 function EmployeeRow({
   employee,
+  onClick,
 }: {
   employee: employeesApi.EmployeeListItem;
+  onClick?: () => void;
 }) {
   const displayName =
     employee.display_name || `${employee.first_name} ${employee.last_name}`;
@@ -470,7 +477,7 @@ function EmployeeRow({
     STATUS_STYLES.active;
 
   return (
-    <tr className="border-b transition-colors hover:bg-muted/50 last:border-0">
+    <tr className="border-b transition-colors hover:bg-muted/50 last:border-0 cursor-pointer" onClick={onClick}>
       {/* Employee */}
       <td className="px-4 py-3">
         <div className="flex items-center gap-3">
