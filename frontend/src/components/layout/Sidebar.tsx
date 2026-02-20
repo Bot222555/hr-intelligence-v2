@@ -30,15 +30,18 @@ interface NavItemDef {
   label: string;
   path: string;
   icon: typeof LayoutDashboard;
+  end?: boolean;
 }
 
 const NAV_ITEMS: NavItemDef[] = [
   { label: "Dashboard", path: ROUTES.DASHBOARD, icon: LayoutDashboard },
   { label: "Employees", path: ROUTES.EMPLOYEES, icon: Users },
-  { label: "Attendance", path: ROUTES.ATTENDANCE, icon: Clock },
+  { label: "Attendance", path: ROUTES.ATTENDANCE, icon: Clock, end: true },
   { label: "Team Attendance", path: ROUTES.TEAM_ATTENDANCE, icon: UsersRound },
   { label: "Regularization", path: ROUTES.REGULARIZATION, icon: FileEdit },
-  { label: "Leave", path: ROUTES.LEAVE, icon: Calendar },
+  { label: "Leave", path: ROUTES.LEAVE, icon: Calendar, end: true },
+  { label: "Team Leave", path: ROUTES.TEAM_LEAVE, icon: UsersRound },
+  { label: "Leave Calendar", path: ROUTES.LEAVE_CALENDAR, icon: CalendarDays },
 ];
 
 const ADMIN_ITEMS: NavItemDef[] = [
@@ -137,6 +140,7 @@ function SidebarLink({
   const link = (
     <NavLink
       to={item.path}
+      end={item.end}
       className={({ isActive }) =>
         cn(
           "flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
