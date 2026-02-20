@@ -13,6 +13,8 @@ import {
   Banknote,
   Ticket,
   Receipt,
+  Network,
+  Building2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/hooks/useAuth";
@@ -39,6 +41,8 @@ interface NavItemDef {
 const NAV_ITEMS: NavItemDef[] = [
   { label: "Dashboard", path: ROUTES.DASHBOARD, icon: LayoutDashboard },
   { label: "Employees", path: ROUTES.EMPLOYEES, icon: Users },
+  { label: "Org Chart", path: ROUTES.ORG_CHART, icon: Network },
+  { label: "Departments", path: ROUTES.DEPARTMENTS, icon: Building2 },
   { label: "Attendance", path: ROUTES.ATTENDANCE, icon: Clock, end: true },
   { label: "Team Attendance", path: ROUTES.TEAM_ATTENDANCE, icon: UsersRound },
   { label: "Regularization", path: ROUTES.REGULARIZATION, icon: FileEdit },

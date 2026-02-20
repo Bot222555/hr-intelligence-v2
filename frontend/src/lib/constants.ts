@@ -7,6 +7,8 @@ export const ROUTES = {
   AUTH_CALLBACK: "/auth/callback",
   DASHBOARD: "/dashboard",
   EMPLOYEES: "/employees",
+  ORG_CHART: "/org-chart",
+  DEPARTMENTS: "/departments",
   ATTENDANCE: "/attendance",
   TEAM_ATTENDANCE: "/attendance/team",
   REGULARIZATION: "/attendance/regularization",

@@ -16,6 +16,9 @@ import { LeaveCalendar } from "@/pages/LeaveCalendar";
 import { SalaryPage } from "@/pages/SalaryPage";
 import { HelpdeskPage } from "@/pages/HelpdeskPage";
 import { ExpensesPage } from "@/pages/ExpensesPage";
+import { OrgChartPage } from "@/pages/OrgChartPage";
+import { DepartmentsPage } from "@/pages/DepartmentsPage";
+import { DepartmentDetailPage } from "@/pages/DepartmentDetailPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
 
 const queryClient = new QueryClient({
@@ -44,6 +47,9 @@ export default function App() {
                 <Route index element={<Navigate to="/dashboard" replace />} />
                 <Route path="dashboard" element={<DashboardPage />} />
                 <Route path="employees" element={<EmployeesPage />} />
+                <Route path="org-chart" element={<OrgChartPage />} />
+                <Route path="departments" element={<DepartmentsPage />} />
+                <Route path="departments/:departmentId" element={<DepartmentDetailPage />} />
                 <Route path="attendance" element={<AttendancePage />} />
                 <Route path="attendance/team" element={<TeamAttendancePage />} />
                 <Route path="attendance/regularization" element={<RegularizationPage />} />
