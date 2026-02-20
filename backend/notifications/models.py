@@ -1,4 +1,4 @@
-"""Notifications ORM model."""
+"""Notifications ORM model — matches the notifications table from TASK-02 migration."""
 
 from __future__ import annotations
 
@@ -23,24 +23,28 @@ class Notification(Base):
         server_default=sa.text("uuid_generate_v4()"),
     )
     recipient_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), sa.ForeignKey("employees.id"), nullable=False
+        UUID(as_uuid=True),
+        sa.ForeignKey("employees.id", ondelete="CASCADE"),
+        nullable=False,
     )
     type: Mapped[NotificationType] = mapped_column(
         sa.Enum(NotificationType, name="notification_type", create_type=False),
         server_default="info",
     )
-    title: Mapped[str] = mapped_column(sa.String(255), nullable=False)
-    message: Mapped[Optional[str]] = mapped_column(sa.Text)
-    link: Mapped[Optional[str]] = mapped_column(sa.String(500))
+    title: Mapped[str] = mapped_column(sa.String(200), nullable=False)
+    message: Mapped[str] = mapped_column(sa.Text, nullable=False)
+    action_url: Mapped[Optional[str]] = mapped_column(sa.String(500))
+    entity_type: Mapped[Optional[str]] = mapped_column(sa.String(50))
+    entity_id: Mapped[Optional[uuid.UUID]] = mapped_column(UUID(as_uuid=True))
     is_read: Mapped[bool] = mapped_column(
-        sa.Boolean, server_default=sa.text("FALSE")
+        sa.Boolean, server_default=sa.text("FALSE"),
     )
     read_at: Mapped[Optional[datetime]] = mapped_column(sa.DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(
-        sa.DateTime(timezone=True), server_default=sa.text("NOW()")
+        sa.DateTime(timezone=True), server_default=sa.text("NOW()"),
     )
 
     # Relationships
     recipient: Mapped["backend.core_hr.models.Employee"] = relationship(
-        back_populates="notifications"
+        back_populates="notifications",
     )

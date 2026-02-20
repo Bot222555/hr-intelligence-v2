@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from backend.auth.router import router as auth_router
 from backend.common.exceptions import register_exception_handlers
 from backend.config import settings
+from backend.notifications.router import router as notifications_router
 
 
 @asynccontextmanager
@@ -61,7 +62,7 @@ def create_app() -> FastAPI:
     # TODO: app.include_router(attendance_router, prefix="/api/v1/attendance", tags=["attendance"])
     # TODO: app.include_router(leave_router, prefix="/api/v1/leave", tags=["leave"])
     # TODO: app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
-    # TODO: app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
+    app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
 
     return app
 
