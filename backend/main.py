@@ -9,6 +9,7 @@ from backend.attendance.router import router as attendance_router
 from backend.auth.router import router as auth_router
 from backend.common.exceptions import register_exception_handlers
 from backend.config import settings
+from backend.dashboard.router import router as dashboard_router
 from backend.core_hr.router import (
     departments_router,
     employees_router,
@@ -69,7 +70,7 @@ def create_app() -> FastAPI:
     app.include_router(locations_router, prefix="/api/v1/locations", tags=["locations"])
     app.include_router(attendance_router, prefix="/api/v1/attendance", tags=["attendance"])
     app.include_router(leave_router, prefix="/api/v1/leave", tags=["leave"])
-    # TODO: app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
+    app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["dashboard"])
     app.include_router(notifications_router, prefix="/api/v1/notifications", tags=["notifications"])
 
     return app
