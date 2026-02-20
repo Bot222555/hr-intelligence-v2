@@ -18,6 +18,7 @@
  */
 
 import apiClient from "./client";
+import type { PaginationMeta } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -66,15 +67,6 @@ export interface AttendanceSummary {
   very_late: number;
   avg_hours: number;
   total_overtime: number;
-}
-
-export interface PaginationMeta {
-  page: number;
-  page_size: number;
-  total: number;
-  total_pages: number;
-  has_next: boolean;
-  has_prev: boolean;
 }
 
 export interface AttendanceListResponse {

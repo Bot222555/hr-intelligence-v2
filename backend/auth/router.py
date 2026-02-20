@@ -98,6 +98,14 @@ async def google_auth(
         user_agent=user_agent,
     )
 
+    dept = None
+    if employee.department:
+        dept = DeptBrief(id=employee.department.id, name=employee.department.name)
+
+    loc = None
+    if employee.location:
+        loc = LocationBrief(id=employee.location.id, name=employee.location.name)
+
     return TokenResponse(
         access_token=access_token,
         refresh_token=refresh_token,
@@ -109,8 +117,8 @@ async def google_auth(
             email=employee.email,
             role=role.value,
             profile_picture_url=employee.profile_photo_url,
-            department=employee.department.name if employee.department else "",
-            location=employee.location.name if employee.location else "",
+            department=dept,
+            location=loc,
         ),
     )
 

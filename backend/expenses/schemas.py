@@ -75,8 +75,19 @@ class ExpenseApproveRequest(BaseModel):
     remarks: Optional[str] = Field(None, max_length=2000)
 
 
+class PaginationMeta(BaseModel):
+    page: int = 1
+    page_size: int = 50
+    total: int = 0
+    total_pages: int = 0
+    has_next: bool = False
+    has_prev: bool = False
+
+
 class ExpenseListResponse(BaseModel):
     data: List[ExpenseOut]
-    total: int
+    meta: PaginationMeta
+    # Legacy flat fields for backward compat
+    total: int = 0
     page: int = 1
     page_size: int = 50

@@ -20,7 +20,11 @@ import { ExpensesPage } from "@/pages/ExpensesPage";
 import { OrgChartPage } from "@/pages/OrgChartPage";
 import { DepartmentsPage } from "@/pages/DepartmentsPage";
 import { DepartmentDetailPage } from "@/pages/DepartmentDetailPage";
+import { FnFPage } from "@/pages/FnFPage";
 import { NotFoundPage } from "@/pages/NotFoundPage";
+import { SettingsPage } from "@/pages/admin/SettingsPage";
+import { RolesPage } from "@/pages/admin/RolesPage";
+import { HolidaysPage } from "@/pages/admin/HolidaysPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -61,6 +65,10 @@ export default function App() {
                 <Route path="salary" element={<SalaryPage />} />
                 <Route path="helpdesk" element={<HelpdeskPage />} />
                 <Route path="expenses" element={<ExpensesPage />} />
+                <Route path="fnf" element={<FnFPage />} />
+                <Route path="admin/settings" element={<SettingsPage />} />
+                <Route path="admin/roles" element={<RolesPage />} />
+                <Route path="admin/holidays" element={<HolidaysPage />} />
               </Route>
 
               {/* 404 */}

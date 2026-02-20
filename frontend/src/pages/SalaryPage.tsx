@@ -2,11 +2,9 @@
  * SalaryPage — Employee salary self-service.
  *
  * Features:
- *  • Monthly salary slip view (current + history)
+ *  • Salary records view (current + history)
  *  • CTC breakdown chart (recharts PieChart)
  *  • Salary components table
- *  • Download salary slip as PDF button
- *  • Team salary view for managers
  */
 
 import { useMemo, useState } from "react";
@@ -21,8 +19,6 @@ import {
 } from "recharts";
 import {
   Banknote,
-  ChevronLeft,
-  ChevronRight,
   TrendingUp,
   TrendingDown,
   IndianRupee,
@@ -30,32 +26,15 @@ import {
   Loader2,
   CheckCircle2,
   Clock,
-  XCircle,
-  ArrowUpRight,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { cn, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import * as salaryApi from "@/api/salary";
-import type { SalarySlip, SalaryComponent } from "@/api/salary";
+import type { SalarySlip } from "@/api/salary";
 
 // ── Helpers ────────────────────────────────────────────────────────
-
-const MONTH_NAMES = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December",
-];
-
-const PAYMENT_STATUS_CONFIG: Record<
-  string,
-  { label: string; bg: string; text: string; icon: typeof Clock }
-> = {
-  pending: { label: "Pending", bg: "bg-amber-50 border-amber-200", text: "text-amber-700", icon: Clock },
-  processed: { label: "Processed", bg: "bg-blue-50 border-blue-200", text: "text-blue-700", icon: ArrowUpRight },
-  paid: { label: "Paid", bg: "bg-emerald-50 border-emerald-200", text: "text-emerald-700", icon: CheckCircle2 },
-  failed: { label: "Failed", bg: "bg-red-50 border-red-200", text: "text-red-700", icon: XCircle },
-};
 
 const PIE_COLORS = [
   "#6C5CE7", "#00B894", "#0984E3", "#FDCB6E", "#E17055",
@@ -74,14 +53,13 @@ function formatCurrency(amount: number): string {
 
 export function SalaryPage() {
   const [activeTab, setActiveTab] = useState<"slips" | "ctc">("slips");
-  const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedSlip, setSelectedSlip] = useState<SalarySlip | null>(null);
 
   // ── Queries ────────────────────────────────────────────────────
 
   const { data: slipsData, isLoading: loadingSlips } = useQuery({
-    queryKey: ["salarySlips", selectedYear],
-    queryFn: () => salaryApi.getMySalarySlips({ year: selectedYear }),
+    queryKey: ["salarySlips"],
+    queryFn: () => salaryApi.getMySalarySlips(),
   });
 
   const { data: ctcData, isLoading: loadingCtc } = useQuery({
@@ -104,12 +82,10 @@ export function SalaryPage() {
       }));
   }, [ctcData]);
 
-  // deduction data is shown in the CTC table below, not in a separate chart
-
   // ── Render ───────────────────────────────────────────────────────
 
   const tabs = [
-    { key: "slips" as const, label: "Salary Slips", icon: FileText },
+    { key: "slips" as const, label: "Salary Records", icon: FileText },
     { key: "ctc" as const, label: "CTC Breakdown", icon: TrendingUp },
   ];
 
@@ -119,7 +95,7 @@ export function SalaryPage() {
       <div>
         <h2 className="text-2xl font-bold text-foreground">Salary</h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          View your salary slips, CTC breakdown, and payment history
+          View your salary records, CTC breakdown, and payment history
         </p>
       </div>
 
@@ -145,33 +121,9 @@ export function SalaryPage() {
         })}
       </div>
 
-      {/* ── Salary Slips Tab ────────────────────────────────────── */}
+      {/* ── Salary Records Tab ──────────────────────────────────── */}
       {activeTab === "slips" && (
         <div className="space-y-6">
-          {/* Year selector */}
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setSelectedYear((y) => y - 1)}
-              className="h-8 w-8"
-            >
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <span className="min-w-[80px] text-center text-sm font-semibold">
-              {selectedYear}
-            </span>
-            <Button
-              variant="outline"
-              size="icon"
-              onClick={() => setSelectedYear((y) => y + 1)}
-              disabled={selectedYear >= new Date().getFullYear()}
-              className="h-8 w-8"
-            >
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-
           {/* Selected slip detail */}
           {selectedSlip && (
             <SlipDetailCard
@@ -188,7 +140,7 @@ export function SalaryPage() {
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <Banknote className="h-12 w-12 text-muted-foreground/40" />
                 <p className="mt-3 text-sm text-muted-foreground">
-                  No salary slips found for {selectedYear}
+                  No salary records found
                 </p>
               </CardContent>
             </Card>
@@ -418,7 +370,6 @@ export function SalaryPage() {
           )}
         </div>
       )}
-
     </div>
   );
 }
@@ -434,9 +385,6 @@ function SlipCard({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const statusCfg = PAYMENT_STATUS_CONFIG[slip.payment_status] || PAYMENT_STATUS_CONFIG.pending;
-  const StatusIcon = statusCfg.icon;
-
   return (
     <Card
       className={cn(
@@ -449,30 +397,30 @@ function SlipCard({
         <div className="flex items-start justify-between">
           <div>
             <p className="text-sm font-medium text-muted-foreground">
-              {MONTH_NAMES[(slip.month ?? 1) - 1]} {slip.year ?? ""}
+              {slip.pay_period || (slip.effective_date ? `Effective ${slip.effective_date}` : "Current")}
             </p>
             <p className="mt-1 text-2xl font-bold tabular-nums text-foreground">
-              {formatCurrency(slip.net_salary ?? 0)}
+              {formatCurrency(slip.net_pay ?? 0)}
             </p>
             <p className="mt-0.5 text-xs text-muted-foreground">
-              Gross: {formatCurrency(slip.gross_earnings ?? 0)}
+              Gross: {formatCurrency(slip.gross_pay ?? 0)}
             </p>
           </div>
-          <Badge className={cn("gap-1 border text-xs", statusCfg.bg, statusCfg.text)}>
-            <StatusIcon className="h-3 w-3" />
-            {statusCfg.label}
+          <Badge className={cn("gap-1 border text-xs",
+            slip.is_current
+              ? "bg-emerald-50 border-emerald-200 text-emerald-700"
+              : "bg-slate-50 border-slate-200 text-slate-600"
+          )}>
+            {slip.is_current ? (
+              <><CheckCircle2 className="h-3 w-3" /> Current</>
+            ) : (
+              <><Clock className="h-3 w-3" /> Previous</>
+            )}
           </Badge>
         </div>
 
-        <div className="mt-4 flex items-center justify-between">
-          <p className="text-xs text-muted-foreground">
-            {slip.days_worked ?? 0}/{slip.days_payable ?? 0} days
-            {(slip.loss_of_pay_days ?? 0) > 0 && (
-              <span className="ml-1 text-red-500">
-                ({slip.loss_of_pay_days} LOP)
-              </span>
-            )}
-          </p>
+        <div className="mt-4 flex items-center justify-between text-xs text-muted-foreground">
+          <span>CTC: {formatCurrency(slip.ctc ?? 0)}</span>
         </div>
       </CardContent>
     </Card>
@@ -488,9 +436,21 @@ function SlipDetailCard({
   slip: SalarySlip;
   onClose: () => void;
 }) {
-  const earnings = (slip.components ?? []).filter((c) => c.type === "earning");
-  const deductions = (slip.components ?? []).filter((c) => c.type === "deduction");
-  const employer = (slip.components ?? []).filter((c) => c.type === "employer_contribution");
+  // Parse earnings/deductions/contributions from arrays
+  const parseItems = (items: any[]) =>
+    items.map((item) => {
+      if (typeof item === "object" && item !== null) {
+        return {
+          name: item.name || item.title || "Unknown",
+          amount: item.amount || item.value || 0,
+        };
+      }
+      return { name: String(item), amount: 0 };
+    });
+
+  const earnings = parseItems(slip.earnings ?? []);
+  const deductions = parseItems(slip.deductions ?? []);
+  const contributions = parseItems(slip.contributions ?? []);
 
   return (
     <Card className="border-primary/20 bg-gradient-to-br from-slate-50 to-gray-50">
@@ -498,10 +458,10 @@ function SlipDetailCard({
         <div>
           <CardTitle className="flex items-center gap-2">
             <FileText className="h-5 w-5 text-primary" />
-            {MONTH_NAMES[(slip.month ?? 1) - 1]} {slip.year ?? ""} — Salary Slip
+            Salary Details — {slip.pay_period || "Current"}
           </CardTitle>
           <CardDescription>
-            Payment date: {slip.payment_date ? formatDate(slip.payment_date) : "Pending"}
+            Effective: {slip.effective_date || "Current period"}
           </CardDescription>
         </div>
         <div className="flex items-center gap-2">
@@ -519,13 +479,18 @@ function SlipDetailCard({
               Earnings
             </h4>
             <div className="space-y-2">
-              {earnings.map((c) => (
-                <ComponentRow key={c.name} component={c} />
+              {earnings.map((c, i) => (
+                <div key={i} className="flex items-center justify-between rounded-md px-2 py-1 hover:bg-background">
+                  <span className="text-sm text-muted-foreground">{c.name}</span>
+                  <span className="text-sm font-medium tabular-nums text-foreground">
+                    {formatCurrency(c.amount)}
+                  </span>
+                </div>
               ))}
               <div className="mt-2 border-t pt-2">
                 <div className="flex justify-between text-sm font-bold text-foreground">
-                  <span>Gross Earnings</span>
-                  <span className="tabular-nums">{formatCurrency(slip.gross_earnings ?? 0)}</span>
+                  <span>Gross Pay</span>
+                  <span className="tabular-nums">{formatCurrency(slip.gross_pay ?? 0)}</span>
                 </div>
               </div>
             </div>
@@ -538,14 +503,19 @@ function SlipDetailCard({
               Deductions
             </h4>
             <div className="space-y-2">
-              {deductions.map((c) => (
-                <ComponentRow key={c.name} component={c} negative />
+              {deductions.map((c, i) => (
+                <div key={i} className="flex items-center justify-between rounded-md px-2 py-1 hover:bg-background">
+                  <span className="text-sm text-muted-foreground">{c.name}</span>
+                  <span className="text-sm font-medium tabular-nums text-red-600">
+                    -{formatCurrency(c.amount)}
+                  </span>
+                </div>
               ))}
               <div className="mt-2 border-t pt-2">
                 <div className="flex justify-between text-sm font-bold text-foreground">
                   <span>Total Deductions</span>
                   <span className="tabular-nums text-red-600">
-                    -{formatCurrency(slip.total_deductions ?? 0)}
+                    -{formatCurrency((slip.gross_pay ?? 0) - (slip.net_pay ?? 0))}
                   </span>
                 </div>
               </div>
@@ -561,35 +531,33 @@ function SlipDetailCard({
             <div className="space-y-3">
               <div className="rounded-xl bg-primary/10 p-4 text-center">
                 <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  Net Salary
+                  Net Pay
                 </p>
                 <p className="mt-1 text-3xl font-bold tabular-nums text-primary">
-                  {formatCurrency(slip.net_salary ?? 0)}
+                  {formatCurrency(slip.net_pay ?? 0)}
                 </p>
               </div>
               <div className="space-y-2 text-sm">
                 <div className="flex justify-between">
-                  <span className="text-muted-foreground">Days Worked</span>
+                  <span className="text-muted-foreground">CTC</span>
                   <span className="font-medium text-foreground">
-                    {slip.days_worked ?? 0}/{slip.days_payable ?? 0}
+                    {formatCurrency(slip.ctc ?? 0)}
                   </span>
                 </div>
-                {(slip.loss_of_pay_days ?? 0) > 0 && (
-                  <div className="flex justify-between">
-                    <span className="text-muted-foreground">LOP Days</span>
-                    <span className="font-medium text-red-600">
-                      {slip.loss_of_pay_days}
-                    </span>
-                  </div>
-                )}
-                {employer.length > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Gross Pay</span>
+                  <span className="font-medium text-foreground">
+                    {formatCurrency(slip.gross_pay ?? 0)}
+                  </span>
+                </div>
+                {contributions.length > 0 && (
                   <>
                     <div className="my-1 h-px bg-border" />
                     <p className="text-xs font-semibold uppercase tracking-wider text-blue-600">
                       Employer Contributions
                     </p>
-                    {employer.map((c) => (
-                      <div key={c.name} className="flex justify-between">
+                    {contributions.map((c, i) => (
+                      <div key={i} className="flex justify-between">
                         <span className="text-muted-foreground">{c.name}</span>
                         <span className="font-medium tabular-nums text-blue-600">
                           {formatCurrency(c.amount)}
@@ -604,31 +572,6 @@ function SlipDetailCard({
         </div>
       </CardContent>
     </Card>
-  );
-}
-
-// ── Component Row ──────────────────────────────────────────────────
-
-function ComponentRow({
-  component,
-  negative,
-}: {
-  component: SalaryComponent;
-  negative?: boolean;
-}) {
-  return (
-    <div className="flex items-center justify-between rounded-md px-2 py-1 transition-colors hover:bg-background">
-      <span className="text-sm text-muted-foreground">{component.name}</span>
-      <span
-        className={cn(
-          "text-sm font-medium tabular-nums",
-          negative ? "text-red-600" : "text-foreground",
-        )}
-      >
-        {negative && "-"}
-        {formatCurrency(component.amount)}
-      </span>
-    </div>
   );
 }
 

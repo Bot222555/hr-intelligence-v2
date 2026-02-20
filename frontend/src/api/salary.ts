@@ -20,27 +20,28 @@ export interface SalaryComponent {
   type: "earning" | "deduction" | "employer_contribution";
   amount: number;
   percentage?: number;
-  is_taxable: boolean;
+  is_taxable?: boolean;
+  annual_amount?: number;
+  monthly_amount?: number;
+  percentage_of_ctc?: number;
 }
 
+/** Maps to backend SalaryOut — CTC-based salary record */
 export interface SalarySlip {
   id: string;
   employee_id: string;
-  month: number;
-  year: number;
-  basic_salary: number;
-  gross_earnings: number;
-  total_deductions: number;
-  net_salary: number;
-  employer_contributions: number;
-  ctc_monthly: number;
-  components: SalaryComponent[];
-  generated_at: string;
-  payment_date: string | null;
-  payment_status: "pending" | "processed" | "paid" | "failed";
-  days_worked: number;
-  days_payable: number;
-  loss_of_pay_days: number;
+  ctc: number;
+  gross_pay: number;
+  net_pay: number;
+  earnings: any[];
+  deductions: any[];
+  contributions: any[];
+  variables: any[];
+  effective_date: string | null;
+  pay_period: string | null;
+  is_current: boolean;
+  created_at: string | null;
+  updated_at: string | null;
 }
 
 export interface SalarySlipListResponse {
@@ -48,9 +49,15 @@ export interface SalarySlipListResponse {
   total: number;
 }
 
+/** Maps to backend CTCBreakdownOut (enriched with components) */
 export interface CTCBreakdown {
+  employee_id: string;
+  employee_name: string | null;
   annual_ctc: number;
   monthly_ctc: number;
+  ctc: number;
+  gross_pay: number;
+  net_pay: number;
   components: {
     name: string;
     type: "earning" | "deduction" | "employer_contribution";
@@ -58,34 +65,40 @@ export interface CTCBreakdown {
     monthly_amount: number;
     percentage_of_ctc: number;
   }[];
+  earnings: any[];
+  deductions: any[];
+  contributions: any[];
 }
 
 export interface SalarySummary {
-  last_month_net: number;
-  last_month_gross: number;
-  last_month_label: string;
-  next_payroll_date: string | null;
-  ytd_gross: number;
-  ytd_net: number;
+  total_earnings: number;
+  total_deductions: number;
+  net_pay: number;
 }
 
 export interface SalaryComponentDef {
   id: string;
-  name: string;
-  type: "earning" | "deduction" | "employer_contribution";
-  is_taxable: boolean;
+  identifier: string | null;
+  title: string;
+  accounting_code: string | null;
+  component_type: string;
   is_active: boolean;
 }
 
 // ── API Calls ──────────────────────────────────────────────────────
 
-/** GET /salary/my-salary — current user's salary summary */
+/** GET /salary/my-salary — current user's salary record */
 export async function getSalarySummary(): Promise<SalarySummary> {
   const { data } = await apiClient.get("/salary/my-salary");
-  return data;
+  // Normalize SalaryOut to SalarySummary
+  return {
+    total_earnings: data.gross_pay ?? 0,
+    total_deductions: (data.gross_pay ?? 0) - (data.net_pay ?? 0),
+    net_pay: data.net_pay ?? 0,
+  };
 }
 
-/** GET /salary/slips — list of salary slips for current user */
+/** GET /salary/slips — list of salary records */
 export async function getMySalarySlips(params?: {
   year?: number;
   page?: number;
@@ -98,7 +111,7 @@ export async function getMySalarySlips(params?: {
 /** GET /salary/components — all salary component definitions */
 export async function getSalaryComponents(): Promise<SalaryComponentDef[]> {
   const { data } = await apiClient.get("/salary/components");
-  return data;
+  return data.data ?? data;
 }
 
 /** GET /salary/my-ctc — current user's CTC breakdown */

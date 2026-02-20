@@ -15,6 +15,7 @@
  */
 
 import apiClient from "./client";
+import type { PaginationMeta } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -28,21 +29,13 @@ export type TicketCategory =
   | "access_request"
   | "other";
 
-export interface EmployeeBrief {
-  id: string;
-  employee_code: string;
-  display_name: string | null;
-  designation: string | null;
-  department_name: string | null;
-  profile_photo_url: string | null;
-}
-
+/** Backend ResponseOut schema */
 export interface TicketResponse {
   id: string;
   ticket_id: string;
-  author_id: string;
-  author: EmployeeBrief | null;
-  content: string;
+  author_id: string | null;
+  author_name: string | null;
+  body: string;
   is_internal: boolean;
   created_at: string;
 }
@@ -50,37 +43,50 @@ export interface TicketResponse {
 /** Keep TicketComment as alias for backward compat in pages */
 export type TicketComment = TicketResponse;
 
+/** Backend TicketOut schema */
 export interface Ticket {
   id: string;
-  ticket_number: string;
-  subject: string;
-  description: string;
-  category: TicketCategory;
-  priority: TicketPriority;
+  ticket_number: string | null;
+  title: string;
+  category: string | null;
   status: TicketStatus;
-  reporter_id: string;
-  reporter: EmployeeBrief | null;
-  assignee_id: string | null;
-  assignee: EmployeeBrief | null;
-  comments: TicketResponse[];
-  created_at: string;
-  updated_at: string;
+  priority: TicketPriority;
+  raised_by_id: string | null;
+  raised_by_name: string | null;
+  assigned_to_id: string | null;
+  assigned_to_name: string | null;
+  requested_on: string | null;
   resolved_at: string | null;
-  closed_at: string | null;
-}
-
-export interface PaginationMeta {
-  page: number;
-  page_size: number;
-  total: number;
-  total_pages: number;
-  has_next: boolean;
-  has_prev: boolean;
+  created_at: string | null;
+  updated_at: string | null;
+  responses: TicketResponse[];
 }
 
 export interface TicketListResponse {
   data: Ticket[];
   meta: PaginationMeta;
+}
+
+// ── Helpers ────────────────────────────────────────────────────────
+
+/** Normalize flat pagination to nested meta if backend returns flat format */
+function normalizeTicketList(raw: any): TicketListResponse {
+  if (raw.meta) return raw;
+  const total = raw.total ?? 0;
+  const page = raw.page ?? 1;
+  const page_size = raw.page_size ?? 50;
+  const total_pages = Math.max(1, Math.ceil(total / page_size));
+  return {
+    data: raw.data ?? [],
+    meta: {
+      page,
+      page_size,
+      total,
+      total_pages,
+      has_next: page < total_pages,
+      has_prev: page > 1,
+    },
+  };
 }
 
 // ── API Calls ──────────────────────────────────────────────────────
@@ -93,7 +99,7 @@ export async function getMyTickets(params?: {
   page_size?: number;
 }): Promise<TicketListResponse> {
   const { data } = await apiClient.get("/helpdesk/my-tickets", { params });
-  return data;
+  return normalizeTicketList(data);
 }
 
 /** GET /helpdesk/ — all tickets (admin/manager view) */
@@ -106,7 +112,7 @@ export async function getAllTickets(params?: {
   page_size?: number;
 }): Promise<TicketListResponse> {
   const { data } = await apiClient.get("/helpdesk/", { params });
-  return data;
+  return normalizeTicketList(data);
 }
 
 /** GET /helpdesk/{id} */
@@ -123,8 +129,7 @@ export async function getTicketResponses(ticketId: string): Promise<TicketRespon
 
 /** POST /helpdesk/ — create a new ticket */
 export async function createTicket(body: {
-  subject: string;
-  description: string;
+  title: string;
   category: TicketCategory;
   priority: TicketPriority;
 }): Promise<Ticket> {
@@ -135,7 +140,7 @@ export async function createTicket(body: {
 /** POST /helpdesk/{id}/responses — add a response/comment */
 export async function addComment(
   ticketId: string,
-  body: { content: string; is_internal?: boolean },
+  body: { body: string; is_internal?: boolean },
 ): Promise<TicketResponse> {
   const { data } = await apiClient.post(
     `/helpdesk/${ticketId}/responses`,
@@ -149,7 +154,7 @@ export async function updateTicket(
   ticketId: string,
   body: {
     status?: TicketStatus;
-    assignee_id?: string;
+    assigned_to_id?: string;
     priority?: TicketPriority;
   },
 ): Promise<Ticket> {

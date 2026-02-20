@@ -9,6 +9,7 @@
  */
 
 import apiClient from "./client";
+import type { PaginationMeta } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -22,15 +23,6 @@ export interface Notification {
   entity_id: string | null;
   is_read: boolean;
   created_at: string;
-}
-
-export interface PaginationMeta {
-  page: number;
-  page_size: number;
-  total: number;
-  total_pages: number;
-  has_next: boolean;
-  has_prev: boolean;
 }
 
 export interface NotificationListResponse {

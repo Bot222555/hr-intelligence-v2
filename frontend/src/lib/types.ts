@@ -1,17 +1,17 @@
 // ── User & Auth ──────────────────────────────────────────────
 
 export interface Department {
-  id: number;
+  id: string;
   name: string;
 }
 
 export interface Location {
-  id: number;
+  id: string;
   name: string;
 }
 
 export interface User {
-  id: number;
+  id: string;
   employee_number: string;
   display_name: string;
   email: string;

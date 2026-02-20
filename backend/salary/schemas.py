@@ -72,14 +72,27 @@ class SalaryOut(BaseModel):
     updated_at: Optional[datetime] = None
 
 
+class CTCComponentOut(BaseModel):
+    """Structured CTC component for frontend display."""
+
+    name: str
+    type: str = "earning"  # earning | deduction | employer_contribution
+    annual_amount: Decimal = Decimal("0")
+    monthly_amount: Decimal = Decimal("0")
+    percentage_of_ctc: Decimal = Decimal("0")
+
+
 class CTCBreakdownOut(BaseModel):
     """CTC breakdown response."""
 
     employee_id: uuid.UUID
     employee_name: Optional[str] = None
+    annual_ctc: Decimal = Decimal("0")
+    monthly_ctc: Decimal = Decimal("0")
     ctc: Decimal = Decimal("0")
     gross_pay: Decimal = Decimal("0")
     net_pay: Decimal = Decimal("0")
+    components: List[CTCComponentOut] = []
     earnings: List[Any] = []
     deductions: List[Any] = []
     contributions: List[Any] = []

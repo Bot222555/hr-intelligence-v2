@@ -13,6 +13,7 @@ import {
   Banknote,
   Ticket,
   Receipt,
+  FileText,
   Network,
   Building2,
   ShieldCheck,
@@ -54,6 +55,7 @@ const NAV_ITEMS: NavItemDef[] = [
   { label: "Salary", path: ROUTES.SALARY, icon: Banknote },
   { label: "Helpdesk", path: ROUTES.HELPDESK, icon: Ticket },
   { label: "Expenses", path: ROUTES.EXPENSES, icon: Receipt },
+  { label: "F&F Settlement", path: ROUTES.FNF, icon: FileText },
 ];
 
 const ADMIN_ITEMS: NavItemDef[] = [

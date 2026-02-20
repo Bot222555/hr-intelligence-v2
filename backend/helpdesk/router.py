@@ -13,7 +13,10 @@ from backend.auth.dependencies import get_current_user, require_role
 from backend.common.constants import UserRole
 from backend.core_hr.models import Employee
 from backend.database import get_db
+import math
+
 from backend.helpdesk.schemas import (
+    PaginationMeta,
     ResponseCreate,
     ResponseOut,
     TicketCreate,
@@ -21,6 +24,18 @@ from backend.helpdesk.schemas import (
     TicketOut,
     TicketUpdate,
 )
+
+
+def _build_meta(total: int, page: int, page_size: int) -> PaginationMeta:
+    total_pages = max(1, math.ceil(total / page_size)) if page_size else 1
+    return PaginationMeta(
+        page=page,
+        page_size=page_size,
+        total=total,
+        total_pages=total_pages,
+        has_next=page < total_pages,
+        has_prev=page > 1,
+    )
 from backend.helpdesk.service import HelpdeskService
 
 router = APIRouter(prefix="", tags=["helpdesk"])
@@ -72,6 +87,7 @@ async def list_tickets(
     )
     return TicketListResponse(
         data=[TicketOut.model_validate(t) for t in tickets],
+        meta=_build_meta(total, page, page_size),
         total=total,
         page=page,
         page_size=page_size,
@@ -98,6 +114,7 @@ async def my_tickets(
     )
     return TicketListResponse(
         data=[TicketOut.model_validate(t) for t in tickets],
+        meta=_build_meta(total, page, page_size),
         total=total,
         page=page,
         page_size=page_size,

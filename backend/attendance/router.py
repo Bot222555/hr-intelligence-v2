@@ -208,6 +208,23 @@ async def approve_regularization(
     )
 
 
+# ── PUT /regularizations/{id}/reject ─────────────────────────────────
+
+@router.put("/regularizations/{regularization_id}/reject", response_model=RegularizationResponse)
+async def reject_regularization(
+    regularization_id: uuid.UUID,
+    body: RegularizationRejectRequest,
+    employee: Employee = Depends(
+        require_role(UserRole.manager, UserRole.hr_admin, UserRole.system_admin)
+    ),
+    db: AsyncSession = Depends(get_db),
+):
+    """Reject a pending regularization request with a reason."""
+    return await AttendanceService.reject_regularization(
+        db, regularization_id, employee.id, reason=body.reason,
+    )
+
+
 # ── GET /policies (shift policies) ──────────────────────────────────
 
 @router.get("/policies", response_model=list[ShiftPolicyResponse])

@@ -18,6 +18,7 @@ export const ROUTES = {
   SALARY: "/salary",
   HELPDESK: "/helpdesk",
   EXPENSES: "/expenses",
+  FNF: "/fnf",
   SETTINGS: "/admin/settings",
   ADMIN_ROLES: "/admin/roles",
   ADMIN_HOLIDAYS: "/admin/holidays",

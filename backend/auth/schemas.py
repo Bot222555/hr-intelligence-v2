@@ -20,17 +20,6 @@ class RefreshRequest(BaseModel):
 
 # ── Embedded / Shared ──────────────────────────────────────────────
 
-class UserInfo(BaseModel):
-    id: uuid.UUID
-    employee_number: str
-    display_name: str
-    email: str
-    role: str
-    profile_picture_url: Optional[str] = None
-    department: str
-    location: str
-
-
 class DeptBrief(BaseModel):
     id: uuid.UUID
     name: str
@@ -39,6 +28,17 @@ class DeptBrief(BaseModel):
 class LocationBrief(BaseModel):
     id: uuid.UUID
     name: str
+
+
+class UserInfo(BaseModel):
+    id: uuid.UUID
+    employee_number: str
+    display_name: str
+    email: str
+    role: str
+    profile_picture_url: Optional[str] = None
+    department: Optional[DeptBrief] = None
+    location: Optional[LocationBrief] = None
 
 
 # ── Responses ───────────────────────────────────────────────────────

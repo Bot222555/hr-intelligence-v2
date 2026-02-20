@@ -22,12 +22,8 @@ from backend.core_hr.router import (
 from backend.expenses.router import router as expenses_router
 from backend.fnf.router import router as fnf_router
 from backend.helpdesk.router import router as helpdesk_router
-from backend.expenses.router import router as expenses_router
-from backend.fnf.router import router as fnf_router
-from backend.helpdesk.router import router as helpdesk_router
 from backend.leave.router import router as leave_router
 from backend.notifications.router import router as notifications_router
-from backend.salary.router import router as salary_router
 from backend.salary.router import router as salary_router
 
 

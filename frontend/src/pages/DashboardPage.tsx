@@ -538,18 +538,10 @@ export function DashboardPage() {
             ) : salarySummaryQuery.data ? (
               <div>
                 <p className="text-2xl font-bold tabular-nums text-foreground">
-                  {formatCurrency(salarySummaryQuery.data?.last_month_net ?? 0)}
+                  {formatCurrency(salarySummaryQuery.data?.net_pay ?? 0)}
                 </p>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  {salarySummaryQuery.data?.last_month_label ?? ""}
-                  {salarySummaryQuery.data?.next_payroll_date && (
-                    <span className="ml-2">
-                      · Next payroll:{" "}
-                      <span className="font-medium text-foreground">
-                        {formatShortDate(salarySummaryQuery.data.next_payroll_date)}
-                      </span>
-                    </span>
-                  )}
+                  Net Pay (Gross: {formatCurrency(salarySummaryQuery.data?.total_earnings ?? 0)})
                 </p>
               </div>
             ) : (

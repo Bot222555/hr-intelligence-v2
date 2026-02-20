@@ -3,7 +3,8 @@
  */
 
 import apiClient from "./client";
-import type { EmployeeListItem, PaginationMeta } from "./employees";
+import type { EmployeeListItem } from "./employees";
+import type { PaginationMeta } from "@/lib/types";
 
 // ── Org Chart Types ────────────────────────────────────────────────
 

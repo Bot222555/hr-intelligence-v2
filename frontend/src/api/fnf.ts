@@ -9,6 +9,7 @@
  */
 
 import apiClient from "./client";
+import type { PaginationMeta } from "@/lib/types";
 
 // ── Types ──────────────────────────────────────────────────────────
 
@@ -33,15 +34,6 @@ export interface FnFComponent {
   type: "payable" | "recoverable";
   amount: number;
   remarks: string | null;
-}
-
-export interface PaginationMeta {
-  page: number;
-  page_size: number;
-  total: number;
-  total_pages: number;
-  has_next: boolean;
-  has_prev: boolean;
 }
 
 export interface FnFListResponse {

@@ -3,7 +3,7 @@
  *
  * Features:
  *  • Ticket list with status filters (Open, In Progress, Resolved, Closed)
- *  • Create new ticket form (category, priority, subject, description)
+ *  • Create new ticket form (category, priority, title)
  *  • Ticket detail view with responses/comments thread
  *  • Assign to / escalate buttons for admins
  */
@@ -30,7 +30,7 @@ import {
   ChevronDown,
   ChevronUp,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -92,7 +92,7 @@ const PRIORITY_CONFIG: Record<
   urgent: { label: "Urgent", bg: "bg-red-50 border-red-200", text: "text-red-700" },
 };
 
-const CATEGORY_LABELS: Record<TicketCategory, string> = {
+const CATEGORY_LABELS: Record<string, string> = {
   it_support: "IT Support",
   hr_query: "HR Query",
   payroll: "Payroll",
@@ -101,7 +101,7 @@ const CATEGORY_LABELS: Record<TicketCategory, string> = {
   other: "Other",
 };
 
-const CATEGORY_EMOJI: Record<TicketCategory, string> = {
+const CATEGORY_EMOJI: Record<string, string> = {
   it_support: "💻",
   hr_query: "👥",
   payroll: "💰",
@@ -326,6 +326,7 @@ function TicketCard({
   const statusCfg = STATUS_CONFIG[ticket.status];
   const priorityCfg = PRIORITY_CONFIG[ticket.priority];
   const StatusIcon = statusCfg.icon;
+  const categoryKey = ticket.category || "other";
 
   return (
     <Card
@@ -340,7 +341,7 @@ function TicketCard({
           {/* Left */}
           <div className="flex items-start gap-3 min-w-0 flex-1">
             <div className="mt-0.5 text-xl">
-              {CATEGORY_EMOJI[ticket.category] || "📋"}
+              {CATEGORY_EMOJI[categoryKey] || "📋"}
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2 flex-wrap">
@@ -352,33 +353,30 @@ function TicketCard({
                 </Badge>
               </div>
               <p className="mt-1 font-semibold text-foreground line-clamp-1">
-                {ticket.subject}
-              </p>
-              <p className="mt-0.5 text-sm text-muted-foreground line-clamp-2">
-                {ticket.description}
+                {ticket.title}
               </p>
               <div className="mt-2 flex items-center gap-3 flex-wrap text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
                   <Tag className="h-3 w-3" />
-                  {CATEGORY_LABELS[ticket.category]}
+                  {CATEGORY_LABELS[categoryKey] || categoryKey}
                 </span>
                 <span>·</span>
-                <span>{timeAgo(ticket.created_at)}</span>
-                {ticket.assignee && (
+                <span>{ticket.created_at ? timeAgo(ticket.created_at) : ""}</span>
+                {ticket.assigned_to_name && (
                   <>
                     <span>·</span>
                     <span className="flex items-center gap-1">
                       <User className="h-3 w-3" />
-                      {ticket.assignee.display_name || ticket.assignee.employee_code}
+                      {ticket.assigned_to_name}
                     </span>
                   </>
                 )}
-                {(ticket.comments ?? []).length > 0 && (
+                {(ticket.responses ?? []).length > 0 && (
                   <>
                     <span>·</span>
                     <span className="flex items-center gap-1">
                       <MessageCircle className="h-3 w-3" />
-                      {(ticket.comments ?? []).length}
+                      {(ticket.responses ?? []).length}
                     </span>
                   </>
                 )}
@@ -400,8 +398,7 @@ function TicketCard({
 // ── Create Ticket Form ─────────────────────────────────────────────
 
 function CreateTicketForm({ onSuccess }: { onSuccess: () => void }) {
-  const [subject, setSubject] = useState("");
-  const [description, setDescription] = useState("");
+  const [title, setTitle] = useState("");
   const [category, setCategory] = useState<TicketCategory>("it_support");
   const [priority, setPriority] = useState<TicketPriority>("medium");
   const [error, setError] = useState<string | null>(null);
@@ -424,18 +421,14 @@ function CreateTicketForm({ onSuccess }: { onSuccess: () => void }) {
       e.preventDefault();
       setError(null);
 
-      if (!subject.trim()) {
-        setError("Please enter a subject");
-        return;
-      }
-      if (!description.trim()) {
-        setError("Please enter a description");
+      if (!title.trim()) {
+        setError("Please enter a title");
         return;
       }
 
-      createMut.mutate({ subject, description, category, priority });
+      createMut.mutate({ title, category, priority });
     },
-    [subject, description, category, priority, createMut],
+    [title, category, priority, createMut],
   );
 
   return (
@@ -485,31 +478,17 @@ function CreateTicketForm({ onSuccess }: { onSuccess: () => void }) {
               </select>
             </div>
 
-            {/* Subject */}
+            {/* Title */}
             <div className="space-y-1.5 sm:col-span-2">
               <label className="text-sm font-medium text-foreground">
-                Subject <span className="text-red-500">*</span>
+                Title <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
-                value={subject}
-                onChange={(e) => setSubject(e.target.value)}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
                 placeholder="Brief summary of your issue..."
                 className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-              />
-            </div>
-
-            {/* Description */}
-            <div className="space-y-1.5 sm:col-span-2">
-              <label className="text-sm font-medium text-foreground">
-                Description <span className="text-red-500">*</span>
-              </label>
-              <textarea
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Describe your issue in detail. Include any relevant information, error messages, or steps to reproduce..."
-                rows={5}
-                className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
               />
             </div>
           </div>
@@ -560,10 +539,11 @@ function TicketDetailView({
 
   const statusCfg = STATUS_CONFIG[ticket.status];
   const priorityCfg = PRIORITY_CONFIG[ticket.priority];
+  const categoryKey = ticket.category || "other";
 
   const addCommentMut = useMutation({
-    mutationFn: (content: string) =>
-      helpdeskApi.addComment(ticket.id, { content }),
+    mutationFn: (body: string) =>
+      helpdeskApi.addComment(ticket.id, { body }),
     onSuccess: () => {
       setComment("");
       setCommentError(null);
@@ -607,21 +587,18 @@ function TicketDetailView({
               {priorityCfg.label}
             </Badge>
             <Badge variant="secondary" className="text-xs">
-              {CATEGORY_EMOJI[ticket.category]} {CATEGORY_LABELS[ticket.category]}
+              {CATEGORY_EMOJI[categoryKey]} {CATEGORY_LABELS[categoryKey] || categoryKey}
             </Badge>
           </div>
-          <CardTitle className="text-lg">{ticket.subject}</CardTitle>
-          <CardDescription className="mt-2 whitespace-pre-wrap">
-            {ticket.description}
-          </CardDescription>
+          <CardTitle className="text-lg">{ticket.title}</CardTitle>
           <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
-            <span>Created {formatDate(ticket.created_at)}</span>
-            {ticket.assignee && (
+            {ticket.created_at && <span>Created {formatDate(ticket.created_at)}</span>}
+            {ticket.assigned_to_name && (
               <>
                 <span>·</span>
                 <span className="flex items-center gap-1">
                   <User className="h-3 w-3" />
-                  Assigned to {ticket.assignee.display_name || ticket.assignee.employee_code}
+                  Assigned to {ticket.assigned_to_name}
                 </span>
               </>
             )}
@@ -690,7 +667,7 @@ function TicketDetailView({
             className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors"
           >
             <MessageCircle className="h-4 w-4" />
-            Comments ({(ticket.comments ?? []).length})
+            Responses ({(ticket.responses ?? []).length})
             {showComments ? (
               <ChevronUp className="h-4 w-4" />
             ) : (
@@ -704,15 +681,15 @@ function TicketDetailView({
                 <div className="flex justify-center py-6">
                   <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
                 </div>
-              ) : (ticket.comments ?? []).length === 0 ? (
+              ) : (ticket.responses ?? []).length === 0 ? (
                 <div className="rounded-lg border border-dashed p-6 text-center">
                   <MessageCircle className="mx-auto h-8 w-8 text-muted-foreground/40" />
                   <p className="mt-2 text-sm text-muted-foreground">
-                    No comments yet. Be the first to respond.
+                    No responses yet. Be the first to respond.
                   </p>
                 </div>
               ) : (
-                (ticket.comments ?? []).map((c) => (
+                (ticket.responses ?? []).map((c) => (
                   <CommentBubble key={c.id} comment={c} />
                 ))
               )}
@@ -724,7 +701,7 @@ function TicketDetailView({
                     <textarea
                       value={comment}
                       onChange={(e) => setComment(e.target.value)}
-                      placeholder="Write a comment..."
+                      placeholder="Write a response..."
                       rows={2}
                       className="flex flex-1 rounded-md border border-input bg-background px-3 py-2 text-sm shadow-xs transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none"
                     />
@@ -757,8 +734,7 @@ function TicketDetailView({
 // ── Comment Bubble ─────────────────────────────────────────────────
 
 function CommentBubble({ comment }: { comment: TicketComment }) {
-  const authorName =
-    comment.author?.display_name || comment.author?.employee_code || "Unknown";
+  const authorName = comment.author_name || "Unknown";
 
   return (
     <div className="flex gap-3">
@@ -779,7 +755,7 @@ function CommentBubble({ comment }: { comment: TicketComment }) {
         </div>
         <div className="mt-1 rounded-lg rounded-tl-none border bg-muted/30 px-3 py-2">
           <p className="text-sm text-foreground whitespace-pre-wrap">
-            {comment.content}
+            {comment.body}
           </p>
         </div>
       </div>

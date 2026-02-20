@@ -15,6 +15,7 @@ from backend.core_hr.models import Employee
 from backend.database import get_db
 from backend.salary.schemas import (
     CTCBreakdownOut,
+    CTCComponentOut,
     SalaryComponentListResponse,
     SalaryComponentOut,
     SalaryListResponse,
@@ -57,6 +58,42 @@ async def my_salary(
 
 # ── GET /my-ctc ──────────────────────────────────────────────────────
 
+def _enrich_ctc_breakdown(breakdown: dict) -> dict:
+    """Add structured components, annual_ctc, monthly_ctc to a CTC dict."""
+    from decimal import Decimal
+
+    ctc = Decimal(str(breakdown.get("ctc", 0)))
+    annual_ctc = ctc
+    monthly_ctc = ctc / 12 if ctc else Decimal("0")
+    components = []
+
+    for item in breakdown.get("earnings", []):
+        name = item.get("name", item.get("title", "Unknown")) if isinstance(item, dict) else str(item)
+        amt = Decimal(str(item.get("amount", item.get("annual_amount", 0)))) if isinstance(item, dict) else Decimal("0")
+        monthly = amt / 12 if amt else Decimal("0")
+        pct = (amt / annual_ctc * 100) if annual_ctc else Decimal("0")
+        components.append(CTCComponentOut(name=name, type="earning", annual_amount=amt, monthly_amount=monthly, percentage_of_ctc=pct))
+
+    for item in breakdown.get("deductions", []):
+        name = item.get("name", item.get("title", "Unknown")) if isinstance(item, dict) else str(item)
+        amt = Decimal(str(item.get("amount", item.get("annual_amount", 0)))) if isinstance(item, dict) else Decimal("0")
+        monthly = amt / 12 if amt else Decimal("0")
+        pct = (amt / annual_ctc * 100) if annual_ctc else Decimal("0")
+        components.append(CTCComponentOut(name=name, type="deduction", annual_amount=amt, monthly_amount=monthly, percentage_of_ctc=pct))
+
+    for item in breakdown.get("contributions", []):
+        name = item.get("name", item.get("title", "Unknown")) if isinstance(item, dict) else str(item)
+        amt = Decimal(str(item.get("amount", item.get("annual_amount", 0)))) if isinstance(item, dict) else Decimal("0")
+        monthly = amt / 12 if amt else Decimal("0")
+        pct = (amt / annual_ctc * 100) if annual_ctc else Decimal("0")
+        components.append(CTCComponentOut(name=name, type="employer_contribution", annual_amount=amt, monthly_amount=monthly, percentage_of_ctc=pct))
+
+    breakdown["annual_ctc"] = annual_ctc
+    breakdown["monthly_ctc"] = monthly_ctc
+    breakdown["components"] = components
+    return breakdown
+
+
 @router.get("/my-ctc", response_model=CTCBreakdownOut)
 async def my_ctc_breakdown(
     employee: Employee = Depends(get_current_user),
@@ -64,7 +101,7 @@ async def my_ctc_breakdown(
 ):
     """Get CTC breakdown for the authenticated user."""
     breakdown = await SalaryService.get_ctc_breakdown(db, employee.id)
-    return CTCBreakdownOut(**breakdown)
+    return CTCBreakdownOut(**_enrich_ctc_breakdown(breakdown))
 
 
 # ── GET /slips ───────────────────────────────────────────────────────
@@ -156,4 +193,4 @@ async def employee_ctc_breakdown(
 ):
     """Get CTC breakdown for a specific employee (Manager/HR only)."""
     breakdown = await SalaryService.get_ctc_breakdown(db, employee_id)
-    return CTCBreakdownOut(**breakdown)
+    return CTCBreakdownOut(**_enrich_ctc_breakdown(breakdown))
