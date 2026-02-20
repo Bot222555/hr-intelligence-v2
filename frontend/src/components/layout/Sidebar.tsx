@@ -4,6 +4,7 @@ import {
   Users,
   Clock,
   Calendar,
+  CalendarDays,
   Settings,
   ChevronLeft,
   ChevronRight,

@@ -26,7 +26,7 @@ import { Badge } from "@/components/ui/badge";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn, formatDate, getInitials } from "@/lib/utils";
 import * as leaveApi from "@/api/leave";
-import type { LeaveCalendarEntry, LeaveStatus } from "@/api/leave";
+import type { LeaveCalendarEntry } from "@/api/leave";
 
 // ── Helpers ────────────────────────────────────────────────────────
 
@@ -458,8 +458,6 @@ export function LeaveCalendar() {
 
 function UpcomingLeaves({
   entries,
-  calYear,
-  calMonth,
 }: {
   entries: LeaveCalendarEntry[];
   calYear: number;

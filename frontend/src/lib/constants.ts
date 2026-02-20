@@ -11,6 +11,8 @@ export const ROUTES = {
   TEAM_ATTENDANCE: "/attendance/team",
   REGULARIZATION: "/attendance/regularization",
   LEAVE: "/leave",
+  TEAM_LEAVE: "/leave/team",
+  LEAVE_CALENDAR: "/leave/calendar",
   SETTINGS: "/settings",
 } as const;
 
