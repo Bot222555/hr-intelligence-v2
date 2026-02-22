@@ -56,10 +56,34 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
+            set -e
             cd /opt/hr-intelligence
             git pull origin main
+
+            # Build frontend (React → static files)
+            if command -v node &> /dev/null; then
+              echo "📦 Building frontend..."
+              cd frontend
+              npm ci --prefer-offline
+              npm run build
+              cd ..
+            else
+              echo "⚠️ Node.js not found — using existing frontend/dist"
+            fi
+
+            # Build and restart backend + infra
             docker compose -f docker-compose.yml -f docker-compose.prod.yml build
             docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
-            sleep 5
-            curl -sf http://localhost:8000/api/v1/health || exit 1
-            echo "Deploy successful!"
+
+            # Wait for API to be ready
+            echo "⏳ Waiting for API..."
+            for i in $(seq 1 12); do
+              if curl -sf http://localhost:8000/api/v1/health > /dev/null 2>&1; then
+                echo "✅ Deploy successful! Health check passed."
+                exit 0
+              fi
+              sleep 5
+            done
+            echo "❌ Health check failed after 60s!"
+            docker compose logs --tail=50 api
+            exit 1
