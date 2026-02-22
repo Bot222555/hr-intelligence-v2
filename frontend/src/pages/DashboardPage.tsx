@@ -130,7 +130,7 @@ const STAT_CARDS: StatCardConfig[] = [
     bg: "bg-amber-50",
   },
   {
-    key: "pending_approvals",
+    key: "pending_leave_requests",
     label: "Pending Approvals",
     icon: ClipboardCheck,
     color: "text-blue-600",
@@ -569,16 +569,13 @@ export function DashboardPage() {
               <div className="h-12 animate-pulse rounded bg-muted" />
             ) : leaveSummaryQuery.isError ? (
               <p className="text-sm text-muted-foreground">No leave data available</p>
-            ) : (leaveSummaryQuery.data?.data ?? []).length > 0 ? (
+            ) : (leaveSummaryQuery.data?.by_type ?? []).length > 0 ? (
               <div className="space-y-1">
-                {(leaveSummaryQuery.data?.data ?? []).slice(0, 3).map((item) => (
+                {(leaveSummaryQuery.data?.by_type ?? []).slice(0, 3).map((item) => (
                   <div key={item.leave_type_code} className="flex items-center justify-between text-xs">
                     <span className="text-muted-foreground">{item.leave_type_code}</span>
                     <span className="font-medium text-foreground">
-                      {item.total_used} used
-                      {item.total_pending > 0 && (
-                        <span className="ml-1 text-amber-600">({item.total_pending} pending)</span>
-                      )}
+                      {item.total_days} days ({item.request_count} requests)
                     </span>
                   </div>
                 ))}

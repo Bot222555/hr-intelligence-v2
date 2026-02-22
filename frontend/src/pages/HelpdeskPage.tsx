@@ -89,6 +89,7 @@ const PRIORITY_CONFIG: Record<
   low: { label: "Low", bg: "bg-slate-50 border-slate-200", text: "text-slate-600" },
   medium: { label: "Medium", bg: "bg-blue-50 border-blue-200", text: "text-blue-700" },
   high: { label: "High", bg: "bg-orange-50 border-orange-200", text: "text-orange-700" },
+  critical: { label: "Critical", bg: "bg-red-50 border-red-200", text: "text-red-700" },
   urgent: { label: "Urgent", bg: "bg-red-50 border-red-200", text: "text-red-700" },
 };
 

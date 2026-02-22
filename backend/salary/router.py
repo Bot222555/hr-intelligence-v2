@@ -4,7 +4,7 @@ All endpoints require authentication.
 """
 
 import logging
-import uuid as _uuid
+import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
@@ -59,7 +59,7 @@ async def my_salary(
         return SalaryOut.model_validate(salary)
     except NotFoundException:
         # Return empty salary for employees without records
-        return SalaryOut(id=_uuid.uuid4(), employee_id=employee.id)
+        return SalaryOut(id=uuid.uuid4(), employee_id=employee.id)
 
 
 # ── GET /my-slips ────────────────────────────────────────────────────

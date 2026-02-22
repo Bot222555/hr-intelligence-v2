@@ -66,7 +66,7 @@ export function FnFPage() {
     queryKey: ["fnfList", statusFilter, page],
     queryFn: () =>
       fnfApi.getFnFList({
-        status: statusFilter === "all" ? undefined : statusFilter,
+        settlement_status: statusFilter === "all" ? undefined : statusFilter,
         page,
         page_size: 10,
       }),
@@ -97,7 +97,7 @@ export function FnFPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Pending</p>
-                <p className="text-2xl font-bold text-foreground">{summaryData.total_pending ?? 0}</p>
+                <p className="text-2xl font-bold text-foreground">{summaryData.pending ?? 0}</p>
               </div>
             </CardContent>
           </Card>
@@ -108,7 +108,7 @@ export function FnFPage() {
               </div>
               <div>
                 <p className="text-sm text-muted-foreground">Completed</p>
-                <p className="text-2xl font-bold text-foreground">{summaryData.total_completed ?? 0}</p>
+                <p className="text-2xl font-bold text-foreground">{summaryData.completed ?? 0}</p>
               </div>
             </CardContent>
           </Card>
@@ -118,10 +118,8 @@ export function FnFPage() {
                 <IndianRupee className="h-5 w-5 text-blue-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Pending Amount</p>
-                <p className="text-2xl font-bold text-foreground">
-                  {formatCurrency(summaryData.total_amount_pending ?? 0)}
-                </p>
+                <p className="text-sm text-muted-foreground">Total Settlements</p>
+                <p className="text-2xl font-bold text-foreground">{summaryData.total_settlements ?? 0}</p>
               </div>
             </CardContent>
           </Card>
@@ -131,9 +129,9 @@ export function FnFPage() {
                 <IndianRupee className="h-5 w-5 text-violet-600" />
               </div>
               <div>
-                <p className="text-sm text-muted-foreground">Settled Amount</p>
+                <p className="text-sm text-muted-foreground">Net Amount</p>
                 <p className="text-2xl font-bold text-foreground">
-                  {formatCurrency(summaryData.total_amount_settled ?? 0)}
+                  {formatCurrency(summaryData.total_net_amount ?? 0)}
                 </p>
               </div>
             </CardContent>
@@ -216,7 +214,7 @@ function FnFCard({
   isSelected: boolean;
   onSelect: () => void;
 }) {
-  const statusCfg = STATUS_CONFIG[record.status] || STATUS_CONFIG.pending;
+  const statusCfg = STATUS_CONFIG[record.settlement_status] || STATUS_CONFIG.pending;
   const StatusIcon = statusCfg.icon;
 
   return (
@@ -233,14 +231,14 @@ function FnFCard({
             <div className="mt-0.5 text-xl">📋</div>
             <div className="min-w-0 flex-1">
               <p className="font-semibold text-foreground">
-                {record.employee_name || record.employee_code || "Employee"}
+                {record.employee_number || "Employee"}
               </p>
               <div className="mt-1 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-                {record.last_working_date && <span>LWD: {record.last_working_date}</span>}
-                {record.resignation_date && (
+                {record.last_working_day && <span>LWD: {record.last_working_day}</span>}
+                {record.termination_type && (
                   <>
                     <span>·</span>
-                    <span>Resigned: {record.resignation_date}</span>
+                    <span>{record.termination_type}</span>
                   </>
                 )}
               </div>
@@ -270,9 +268,16 @@ function FnFDetailView({
   record: FnFRecord;
   onClose: () => void;
 }) {
-  const statusCfg = STATUS_CONFIG[record.status] || STATUS_CONFIG.pending;
-  const payable = (record.components ?? []).filter((c) => c.type === "payable");
-  const recoverable = (record.components ?? []).filter((c) => c.type === "recoverable");
+  const statusCfg = STATUS_CONFIG[record.settlement_status] || STATUS_CONFIG.pending;
+
+  // Parse settlement_details into earnings/deductions if available
+  const details = record.settlement_details ?? {};
+  const earnings: Array<{ name: string; amount: number }> = Array.isArray(details.earnings)
+    ? details.earnings
+    : [];
+  const deductions: Array<{ name: string; amount: number }> = Array.isArray(details.deductions)
+    ? details.deductions
+    : [];
 
   return (
     <Card className="border-primary/20">
@@ -284,10 +289,10 @@ function FnFDetailView({
             </Badge>
           </div>
           <CardTitle className="text-lg">
-            {record.employee_name || record.employee_code || "Employee"} — F&F Settlement
+            {record.employee_number || "Employee"} — F&F Settlement
           </CardTitle>
           <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground flex-wrap">
-            {record.last_working_date && <span>LWD: {record.last_working_date}</span>}
+            {record.last_working_day && <span>LWD: {record.last_working_day}</span>}
             {record.created_at && (
               <>
                 <span>·</span>
@@ -303,15 +308,15 @@ function FnFDetailView({
       <CardContent>
         <div className="grid gap-6 lg:grid-cols-3">
           <div className="rounded-xl bg-emerald-50 p-4 text-center">
-            <p className="text-xs font-medium uppercase text-muted-foreground">Total Payable</p>
+            <p className="text-xs font-medium uppercase text-muted-foreground">Total Earnings</p>
             <p className="mt-1 text-2xl font-bold text-emerald-700">
-              {formatCurrency(record.total_payable ?? 0)}
+              {formatCurrency(record.total_earnings ?? 0)}
             </p>
           </div>
           <div className="rounded-xl bg-red-50 p-4 text-center">
-            <p className="text-xs font-medium uppercase text-muted-foreground">Total Recoverable</p>
+            <p className="text-xs font-medium uppercase text-muted-foreground">Total Deductions</p>
             <p className="mt-1 text-2xl font-bold text-red-700">
-              {formatCurrency(record.total_recoverable ?? 0)}
+              {formatCurrency(record.total_deductions ?? 0)}
             </p>
           </div>
           <div className="rounded-xl bg-primary/10 p-4 text-center">
@@ -322,15 +327,15 @@ function FnFDetailView({
           </div>
         </div>
 
-        {(payable.length > 0 || recoverable.length > 0) && (
+        {(earnings.length > 0 || deductions.length > 0) && (
           <div className="mt-6 grid gap-6 lg:grid-cols-2">
-            {payable.length > 0 && (
+            {earnings.length > 0 && (
               <div>
                 <h4 className="mb-2 text-sm font-semibold uppercase tracking-wider text-emerald-600">
-                  Payable Components
+                  Earnings
                 </h4>
                 <div className="space-y-1">
-                  {payable.map((c, i) => (
+                  {earnings.map((c, i) => (
                     <div key={i} className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{c.name}</span>
                       <span className="font-medium tabular-nums">{formatCurrency(c.amount)}</span>
@@ -339,13 +344,13 @@ function FnFDetailView({
                 </div>
               </div>
             )}
-            {recoverable.length > 0 && (
+            {deductions.length > 0 && (
               <div>
                 <h4 className="mb-2 text-sm font-semibold uppercase tracking-wider text-red-600">
-                  Recoverable Components
+                  Deductions
                 </h4>
                 <div className="space-y-1">
-                  {recoverable.map((c, i) => (
+                  {deductions.map((c, i) => (
                     <div key={i} className="flex justify-between text-sm">
                       <span className="text-muted-foreground">{c.name}</span>
                       <span className="font-medium tabular-nums text-red-600">

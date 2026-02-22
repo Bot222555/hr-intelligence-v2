@@ -15,27 +15,84 @@ from migration.config import get_pg_conn, get_sqlite_conn
 # ── Leave type name normalization ────────────────────────────────────
 # Maps common Keka leave type strings → leave_types.code in PG
 LEAVE_TYPE_ALIASES = {
+    # Casual Leave
     "casual leave": "CL",
     "cl": "CL",
-    "privilege leave": "PL",
-    "earned leave": "PL",
-    "pl": "PL",
-    "el": "PL",
-    "comp off": "CO",
-    "compensatory off": "CO",
-    "co": "CO",
-    "maternity leave": "ML",
-    "ml": "ML",
+    "casual": "CL",
+    # Sick Leave
     "sick leave": "SL",
     "sl": "SL",
-    "unpaid leave": "UL",
-    "loss of pay": "UL",
-    "lop": "UL",
-    "lwp": "UL",
-    "ul": "UL",
-    "paternity leave": "PL",  # fallback
-    "bereavement leave": "CL",  # fallback
-    "optional holiday": "CL",  # fallback
+    "sick": "SL",
+    "medical leave": "SL",
+    # Earned / Privilege Leave
+    "privilege leave": "PL",
+    "earned leave": "EL",
+    "pl": "PL",
+    "el": "EL",
+    "annual leave": "EL",
+    # Comp Off
+    "comp off": "CO",
+    "compensatory off": "CO",
+    "compensatory leave": "CO",
+    "comp-off": "CO",
+    "compoff": "CO",
+    "co": "CO",
+    # Maternity Leave
+    "maternity leave": "ML",
+    "ml": "ML",
+    "maternity": "ML",
+    # Paternity Leave
+    "paternity leave": "PTL",
+    "paternity": "PTL",
+    "ptl": "PTL",
+    # Loss of Pay / Unpaid
+    "unpaid leave": "LOP",
+    "loss of pay": "LOP",
+    "lop": "LOP",
+    "lwp": "LOP",
+    "leave without pay": "LOP",
+    "ul": "LOP",
+    # Work From Home
+    "work from home": "WFH",
+    "wfh": "WFH",
+    "remote work": "WFH",
+    "remote working": "WFH",
+    # Optional Holiday
+    "optional holiday": "OH",
+    "restricted holiday": "OH",
+    "oh": "OH",
+    "rh": "OH",
+    "floating holiday": "OH",
+    # Bereavement Leave
+    "bereavement leave": "BL",
+    "bereavement": "BL",
+    "bl": "BL",
+    # Marriage Leave
+    "marriage leave": "MRL",
+    "mrl": "MRL",
+    "wedding leave": "MRL",
+    # Special Leave
+    "special leave": "SPL",
+    "spl": "SPL",
+    # Menstrual / Child Care Leave
+    "menstrual leave": "MCL",
+    "menstrual/child care leave": "MCL",
+    "period leave": "MCL",
+    "child care leave": "MCL",
+    "mcl": "MCL",
+    # Half Day variants
+    "half day": "CL",
+    "short leave": "CL",
+    # Birthday / Celebration leaves
+    "birthday leave": "CL",
+    "birthday off": "CL",
+    # Sabbatical
+    "sabbatical": "LOP",
+    "sabbatical leave": "LOP",
+    # Study Leave
+    "study leave": "SPL",
+    # Emergency Leave
+    "emergency leave": "CL",
 }
 
 # Leave request status mapping

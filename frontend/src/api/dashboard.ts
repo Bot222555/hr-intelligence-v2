@@ -20,9 +20,8 @@ export interface DashboardSummary {
   total_employees: number;
   present_today: number;
   on_leave_today: number;
-  pending_approvals: number;
-  new_joiners_this_month: number;
-  attrition_this_month: number;
+  pending_leave_requests: number;
+  [key: string]: number; // allow extra fields from backend
 }
 
 export interface AttendanceTrendPoint {
@@ -95,14 +94,19 @@ export interface RecentActivitiesResponse {
 }
 
 export interface LeaveSummaryItem {
-  leave_type: string;
+  leave_type_id: string;
   leave_type_code: string;
-  total_used: number;
-  total_pending: number;
+  leave_type_name: string;
+  request_count: number;
+  total_days: number;
 }
 
 export interface LeaveSummaryResponse {
-  data: LeaveSummaryItem[];
+  month: number;
+  year: number;
+  total_requests: number;
+  total_days: number;
+  by_type: LeaveSummaryItem[];
 }
 
 export interface NewJoinerItem {
